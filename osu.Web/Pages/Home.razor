@@ -9,20 +9,21 @@
     <header>
         <div class="ring" aria-hidden="true"><span>web</span></div>
         <div>
-            <p class="phase">BROWSER PORT · PHASE 2</p>
-            <h1>Canvas host is online.</h1>
-            <p class="lede">The browser render loop and input bridge are now connected to .NET WebAssembly.</p>
+            <p class="phase">BROWSER PORT · PHASE 3</p>
+            <h1>WebGL host is online.</h1>
+            <p class="lede">A GPU-backed browser surface and the .NET WebAssembly input bridge are running together.</p>
         </div>
     </header>
 
     <section class="canvas-panel">
-        <canvas @ref="canvas" tabindex="0" aria-label="osu browser host diagnostic canvas"></canvas>
+        <canvas @ref="canvas" tabindex="0" aria-label="osu browser WebGL host diagnostic canvas"></canvas>
         <div class="canvas-hint">Move or click the pointer · press Z / X</div>
     </section>
 
     <dl>
         <div><dt>.NET runtime</dt><dd>browser-wasm</dd></div>
         <div><dt>Game assembly</dt><dd>@typeof(OsuGame).Assembly.GetName().Name</dd></div>
+        <div><dt>GPU renderer</dt><dd>@rendererStatus</dd></div>
         <div><dt>Canvas frames</dt><dd>@frameCount</dd></div>
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
     </dl>
@@ -33,6 +34,7 @@
     private IJSObjectReference? module;
     private DotNetObjectReference<Home>? self;
     private long frameCount;
+    private string rendererStatus = "initialising";
     private string inputStatus = "waiting";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -43,6 +45,13 @@
         module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js");
         self = DotNetObjectReference.Create(this);
         await module.InvokeVoidAsync("startBrowserHost", canvas, self);
+    }
+
+    [JSInvokable]
+    public Task ReportRenderer(string renderer)
+    {
+        rendererStatus = renderer;
+        return InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
