@@ -43,4 +43,4 @@ This confirms the first concrete platform boundary: the packaged osu!framework p
 
 ## Current browser boot fix
 
-The browser framework fork now recognises `OperatingSystem.IsBrowser()` as a dedicated runtime platform. The web integration build tracks framework commit `67d13f4`, removing the `RuntimeInfo` type-initialisation failure that previously stopped `OsuGame` before its first frame.
+The browser framework fork now recognises `OperatingSystem.IsBrowser()` as a dedicated runtime platform. The web integration build tracks framework commit `6b24601`, removing the `RuntimeInfo` type-initialisation failure and substituting a browser-safe no-output mixer for native BASS during early boot.
