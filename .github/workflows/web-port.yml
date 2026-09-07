@@ -25,6 +25,9 @@ jobs:
       - name: Checkout osu
         uses: actions/checkout@v4
 
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: Checkout browser framework fork
         uses: actions/checkout@v4
         with:
