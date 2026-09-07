@@ -31,8 +31,9 @@ namespace osu.Game.Rulesets
         /// Create an assembly ruleset store that populates from loaded assemblies and an optional storage source.
         /// </summary>
         /// <param name="storage">An optional storage containing ruleset DLLs.</param>
-        public AssemblyRulesetStore(Storage? storage = null)
-            : base(storage)
+        /// <param name="discoverFromDisk">Whether to discover assemblies on disk in addition to already loaded assemblies.</param>
+        public AssemblyRulesetStore(Storage? storage = null, bool discoverFromDisk = true)
+            : base(storage, discoverFromDisk)
 
         {
             List<Ruleset> instances = LoadedAssemblies.Values
