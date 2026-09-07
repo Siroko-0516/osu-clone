@@ -1,5 +1,5 @@
 using Microsoft.JSInterop;
-using osu.Game.Database.Storage;
+using osu.Game.Database.Persistence;
 
 namespace osu.Web.Storage;
 
