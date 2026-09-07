@@ -4,6 +4,7 @@ on:
     branches: [web-port]
     paths:
       - 'osu.Web/**'
+      - 'osu.Web.Probe/**'
       - 'WEB_PORTING.md'
       - '.github/workflows/web-port.yml'
   workflow_dispatch:
@@ -18,7 +19,14 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: dotnet workload install wasm-tools
-      - run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web
+      - name: Build standalone browser host
+        run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web
+      - name: Probe full osu.Game browser compatibility
+        id: game-probe
+        continue-on-error: true
+        run: dotnet build osu.Web.Probe/osu.Web.Probe.csproj -c Release
+      - name: Record probe result
+        run: echo "osu.Game browser compatibility probe outcome: ${{ steps.game-probe.outcome }}" > artifacts/web/compatibility-probe.txt
       - uses: actions/upload-artifact@v4
         with:
           name: osu-web-phase-0
