@@ -1,5 +1,9 @@
 @page "/"
 @using osu.Game
+@using osu.Game.Rulesets.Osu
+@using osu.Game.Rulesets.Mania
+@using osu.Game.Rulesets.Taiko
+@using osu.Game.Rulesets.Catch
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
@@ -11,13 +15,20 @@
         <div>
             <p class="phase">BROWSER PORT · PHASE 3</p>
             <h1>WebGL host is online.</h1>
-            <p class="lede">A GPU-backed browser surface and the .NET WebAssembly input bridge are running together.</p>
+            <p class="lede">The original built-in rulesets are linked into the browser build.</p>
         </div>
     </header>
 
+    <nav class="mode-picker" aria-label="Ruleset">
+        <button class="@(selectedMode == "osu" ? "active" : null)" @onclick='() => SelectMode("osu")'>osu!standard</button>
+        <button class="@(selectedMode == "mania" ? "active" : null)" @onclick='() => SelectMode("mania")'>osu!mania</button>
+        <button class="@(selectedMode == "taiko" ? "active" : null)" @onclick='() => SelectMode("taiko")'>osu!taiko</button>
+        <button class="@(selectedMode == "catch" ? "active" : null)" @onclick='() => SelectMode("catch")'>osu!catch</button>
+    </nav>
+
     <section class="canvas-panel">
         <canvas @ref="canvas" tabindex="0" aria-label="osu browser WebGL host diagnostic canvas"></canvas>
-        <div class="canvas-hint">Move or click the pointer · press Z / X</div>
+        <div class="canvas-hint">Move or click the pointer · press Z / X or arrow keys</div>
     </section>
 
     <dl>
@@ -26,6 +37,10 @@
         <div><dt>GPU renderer</dt><dd>@rendererStatus</dd></div>
         <div><dt>Canvas frames</dt><dd>@frameCount</dd></div>
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
+        <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
+        <div><dt>mania</dt><dd>@typeof(ManiaRuleset).Assembly.GetName().Name</dd></div>
+        <div><dt>taiko</dt><dd>@typeof(TaikoRuleset).Assembly.GetName().Name</dd></div>
+        <div><dt>catch</dt><dd>@typeof(CatchRuleset).Assembly.GetName().Name</dd></div>
     </dl>
 </main>
 
@@ -36,6 +51,7 @@
     private long frameCount;
     private string rendererStatus = "initialising";
     private string inputStatus = "waiting";
+    private string selectedMode = "osu";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -45,6 +61,13 @@
         module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js");
         self = DotNetObjectReference.Create(this);
         await module.InvokeVoidAsync("startBrowserHost", canvas, self);
+    }
+
+    private async Task SelectMode(string mode)
+    {
+        selectedMode = mode;
+        if (module is not null)
+            await module.InvokeVoidAsync("setRuleset", mode);
     }
 
     [JSInvokable]
@@ -64,7 +87,7 @@
     [JSInvokable]
     public Task ReportInput(string kind, double x, double y)
     {
-        inputStatus = $"{kind} · {x:0}, {y:0}";
+        inputStatus = $"{selectedMode}: {kind} · {x:0}, {y:0}";
         return InvokeAsync(StateHasChanged);
     }
 
