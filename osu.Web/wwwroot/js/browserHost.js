@@ -8,6 +8,7 @@ let pumpPending = false;
 let pointer = { x: 0, y: 0, down: false };
 const keys = new Set();
 let ruleset = "osu";
+let frameworkFrame;
 const listeners = [];
 
 const vertexSource = `#version 300 es
@@ -137,12 +138,18 @@ export async function startBrowserHost(target, dotnetReference) {
     await dotnet.invokeMethodAsync("ReportRenderer", `WebGL2 · ${gl.getParameter(gl.RENDERER)}`);
 
     const render = time => {
-        gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
-        gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
-        gl.uniform1f(uniforms.time, time / 1000);
-        gl.uniform1f(uniforms.down, pointer.down ? 1 : 0);
-        gl.uniform1f(uniforms.keys, keys.size);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (frameworkFrame) {
+            const [r, g, b, a] = frameworkFrame;
+            gl.clearColor(r, g, b, a);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        } else {
+            gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
+            gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
+            gl.uniform1f(uniforms.time, time / 1000);
+            gl.uniform1f(uniforms.down, pointer.down ? 1 : 0);
+            gl.uniform1f(uniforms.keys, keys.size);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
 
         frame++;
         if (!pumpPending) {
@@ -167,4 +174,8 @@ export function stopBrowserHost() {
 export function setRuleset(mode) {
     ruleset = mode;
     if (dotnet) dotnet.invokeMethodAsync("ReportInput", `ruleset ${mode}`, pointer.x, pointer.y);
+}
+
+export function applyFrameworkFrame(state) {
+    frameworkFrame = state;
 }
