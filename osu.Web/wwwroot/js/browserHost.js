@@ -6,6 +6,7 @@ let program;
 let frame = 0;
 let pointer = { x: 0, y: 0, down: false };
 const keys = new Set();
+let ruleset = "osu";
 const listeners = [];
 
 const vertexSource = `#version 300 es
@@ -117,7 +118,7 @@ export async function startBrowserHost(target, dotnetReference) {
     });
     listen(window, "pointerup", () => pointer.down = false);
     listen(canvas, "keydown", event => {
-        if (event.code !== "KeyZ" && event.code !== "KeyX") return;
+        if (!["KeyZ", "KeyX", "KeyD", "KeyF", "KeyJ", "KeyK", "ArrowLeft", "ArrowRight"].includes(event.code)) return;
         event.preventDefault();
         keys.add(event.code);
         dotnet.invokeMethodAsync("ReportInput", event.code, pointer.x, pointer.y);
@@ -155,4 +156,9 @@ export function stopBrowserHost() {
     animationFrame = undefined;
     dotnet = undefined;
     gl = undefined;
+}
+
+export function setRuleset(mode) {
+    ruleset = mode;
+    if (dotnet) dotnet.invokeMethodAsync("ReportInput", `ruleset ${mode}`, pointer.x, pointer.y);
 }
