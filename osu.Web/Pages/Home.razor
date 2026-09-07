@@ -78,7 +78,7 @@
         catch (Exception exception)
         {
             gameFailed = true;
-            gameStatus = $"{exception.GetType().Name}: {exception.Message}";
+            gameStatus = FormatException(exception);
         }
 
         StateHasChanged();
@@ -111,7 +111,7 @@
             catch (Exception exception)
             {
                 gameFailed = true;
-                gameStatus = $"{exception.GetType().Name}: {exception.Message}";
+                gameStatus = FormatException(exception);
             }
         }
 
@@ -125,6 +125,16 @@
     {
         inputStatus = $"{selectedMode}: {kind} · {x:0}, {y:0}";
         return InvokeAsync(StateHasChanged);
+    }
+
+    private static string FormatException(Exception exception)
+    {
+        var messages = new List<string>();
+
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            messages.Add($"{current.GetType().Name}: {current.Message}");
+
+        return string.Join(" → ", messages);
     }
 
     public async ValueTask DisposeAsync()
