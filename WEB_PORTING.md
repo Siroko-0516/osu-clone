@@ -28,3 +28,15 @@ The next milestone is complete only when an osu!framework test scene renders its
 ## Legal
 
 Keep the upstream MIT licence and copyright notice. The upstream README states separately that the MIT licence does not grant use of osu!/ppy branding and that game resources have their own licence.
+
+## Compatibility result — Phase 1
+
+The full `osu.Game` project graph compiles for `browser-wasm`, but publishing the linked game currently stops in the native WebAssembly step at an SDL callback:
+
+```
+The return type 'SDL.SDLBool' of pinvoke callback method
+'SDL.SDLBool eventFilter(System.IntPtr, SDL.SDL_Event*)'
+needs to be blittable.
+```
+
+This confirms the first concrete platform boundary: the packaged osu!framework pulls its native SDL host into the browser publish. The next change must happen in an osu-framework fork, where a browser host can exclude SDL and supply canvas, input, audio, and storage adapters. This cannot be correctly solved by hiding the error in the game project.
