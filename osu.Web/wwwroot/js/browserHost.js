@@ -4,6 +4,7 @@ let gl;
 let dotnet;
 let program;
 let frame = 0;
+let pumpPending = false;
 let pointer = { x: 0, y: 0, down: false };
 const keys = new Set();
 let ruleset = "osu";
@@ -144,7 +145,11 @@ export async function startBrowserHost(target, dotnetReference) {
         gl.drawArrays(gl.TRIANGLES, 0, 3);
 
         frame++;
-        if (frame % 30 === 0) dotnet.invokeMethodAsync("ReportFrame", frame);
+        if (!pumpPending) {
+            pumpPending = true;
+            dotnet.invokeMethodAsync("PumpGameFrame", frame)
+                .finally(() => pumpPending = false);
+        }
         animationFrame = requestAnimationFrame(render);
     };
     animationFrame = requestAnimationFrame(render);
@@ -154,6 +159,7 @@ export function stopBrowserHost() {
     if (animationFrame) cancelAnimationFrame(animationFrame);
     for (const remove of listeners.splice(0)) remove();
     animationFrame = undefined;
+    pumpPending = false;
     dotnet = undefined;
     gl = undefined;
 }
