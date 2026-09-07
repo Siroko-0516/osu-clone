@@ -4,6 +4,7 @@
 @using osu.Game.Rulesets.Mania
 @using osu.Game.Rulesets.Taiko
 @using osu.Game.Rulesets.Catch
+@using osu.Framework.Platform
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
@@ -13,9 +14,9 @@
     <header>
         <div class="ring" aria-hidden="true"><span>web</span></div>
         <div>
-            <p class="phase">BROWSER PORT · PHASE 3</p>
-            <h1>WebGL host is online.</h1>
-            <p class="lede">The original built-in rulesets are linked into the browser build.</p>
+            <p class="phase">BROWSER PORT · PHASE 4</p>
+            <h1>Original game boot probe.</h1>
+            <p class="lede">The browser now constructs the original OsuGame and advances its scene graph from requestAnimationFrame.</p>
         </div>
     </header>
 
@@ -32,10 +33,9 @@
     </section>
 
     <dl>
-        <div><dt>.NET runtime</dt><dd>browser-wasm</dd></div>
-        <div><dt>Game assembly</dt><dd>@typeof(OsuGame).Assembly.GetName().Name</dd></div>
+        <div><dt>Original game</dt><dd>@gameStatus</dd></div>
         <div><dt>GPU renderer</dt><dd>@rendererStatus</dd></div>
-        <div><dt>Canvas frames</dt><dd>@frameCount</dd></div>
+        <div><dt>Game frames</dt><dd>@gameFrameCount</dd></div>
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
         <div><dt>mania</dt><dd>@typeof(ManiaRuleset).Assembly.GetName().Name</dd></div>
@@ -48,10 +48,14 @@
     private ElementReference canvas;
     private IJSObjectReference? module;
     private DotNetObjectReference<Home>? self;
-    private long frameCount;
+    private BrowserGameHost? gameHost;
+    private OsuGame? game;
+    private long gameFrameCount;
     private string rendererStatus = "initialising";
+    private string gameStatus = "waiting";
     private string inputStatus = "waiting";
     private string selectedMode = "osu";
+    private bool gameFailed;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -61,6 +65,23 @@
         module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js");
         self = DotNetObjectReference.Create(this);
         await module.InvokeVoidAsync("startBrowserHost", canvas, self);
+
+        try
+        {
+            gameStatus = "initialising BrowserGameHost";
+            StateHasChanged();
+            gameHost = new BrowserGameHost("osu-web");
+            game = new OsuGame(Array.Empty<string>());
+            gameHost.Run(game);
+            gameStatus = "OsuGame running";
+        }
+        catch (Exception exception)
+        {
+            gameFailed = true;
+            gameStatus = $"{exception.GetType().Name}: {exception.Message}";
+        }
+
+        StateHasChanged();
     }
 
     private async Task SelectMode(string mode)
@@ -78,10 +99,25 @@
     }
 
     [JSInvokable]
-    public Task ReportFrame(long frames)
+    public Task PumpGameFrame(long frame)
     {
-        frameCount = frames;
-        return InvokeAsync(StateHasChanged);
+        if (!gameFailed && gameHost is not null)
+        {
+            try
+            {
+                gameHost.PumpFrame();
+                gameFrameCount = frame;
+            }
+            catch (Exception exception)
+            {
+                gameFailed = true;
+                gameStatus = $"{exception.GetType().Name}: {exception.Message}";
+            }
+        }
+
+        return frame % 30 == 0 || gameFailed
+            ? InvokeAsync(StateHasChanged)
+            : Task.CompletedTask;
     }
 
     [JSInvokable]
