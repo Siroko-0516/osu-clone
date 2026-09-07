@@ -5,6 +5,7 @@ on:
     paths:
       - 'osu.Web/**'
       - 'osu.Web.Probe/**'
+      - 'osu.Web.Storage.Tests/**'
       - 'osu.Game/**'
       - 'WEB_PORTING.md'
       - '.github/workflows/web-port.yml'
@@ -24,6 +25,16 @@ jobs:
     steps:
       - name: Checkout osu
         uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify browser metadata storage contracts
+        working-directory: osu.Web.Storage.Tests
+        run: |
+          npm ci --ignore-scripts
+          npm test
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
