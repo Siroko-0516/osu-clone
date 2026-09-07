@@ -34,10 +34,10 @@ jobs:
       - run: dotnet workload install wasm-tools
 
       - name: Build osu.Game against browser framework
-        run: dotnet build osu.Web.Probe/osu.Web.Probe.csproj -c Release -p:OsuBrowserBuild=true
+        run: dotnet build osu.Web.Probe/osu.Web.Probe.csproj -c Release -p:OsuBrowserBuild=true -p:WasmBuildNative=false
 
-      - name: Publish WebAssembly host
-        run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true
+      - name: Publish interpreted WebAssembly host
+        run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true -p:WasmBuildNative=false
 
       - uses: actions/upload-artifact@v4
         with:
