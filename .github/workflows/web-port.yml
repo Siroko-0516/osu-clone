@@ -5,7 +5,7 @@ on:
     paths:
       - 'osu.Web/**'
       - 'osu.Web.Probe/**'
-      - 'osu.Game/osu.Game.csproj'
+      - 'osu.Game/**'
       - 'WEB_PORTING.md'
       - '.github/workflows/web-port.yml'
   workflow_dispatch:
