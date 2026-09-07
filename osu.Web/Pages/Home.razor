@@ -14,9 +14,9 @@
     <header>
         <div class="ring" aria-hidden="true"><span>web</span></div>
         <div>
-            <p class="phase">BROWSER PORT · PHASE 4</p>
-            <h1>Original game boot probe.</h1>
-            <p class="lede">The browser now constructs the original OsuGame and advances its scene graph from requestAnimationFrame.</p>
+            <p class="phase">BROWSER PORT · RENDERER PHASE</p>
+            <h1>Original scene renderer.</h1>
+            <p class="lede">The browser is progressively replacing the diagnostic surface with frames produced by osu!framework.</p>
         </div>
     </header>
 
@@ -106,6 +106,9 @@
             try
             {
                 gameHost.PumpFrame();
+                float[] state = gameHost.GetBrowserFrameState();
+                if (module is not null)
+                    _ = module.InvokeVoidAsync("applyFrameworkFrame", state);
                 gameFrameCount = frame;
             }
             catch (Exception exception)
