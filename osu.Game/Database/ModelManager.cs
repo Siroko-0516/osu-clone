@@ -29,9 +29,12 @@ namespace osu.Game.Database
 
         private readonly RealmFileStore realmFileStore;
 
+        private readonly IModelDeletionStore<TModel> deletionStore;
+
         public ModelManager(Storage storage, RealmAccess realm)
         {
             realmFileStore = new RealmFileStore(realm, storage);
+            deletionStore = new RealmModelDeletionStore<TModel>(realm);
             Realm = realm;
         }
 
@@ -189,40 +192,9 @@ namespace osu.Game.Database
             notification.State = ProgressNotificationState.Completed;
         }
 
-        public bool Delete(TModel item)
-        {
-            // Importantly, begin the realm write *before* re-fetching, else the update realm may not be in a consistent state
-            // (ie. if an async import finished very recently).
-            return Realm.Write(realm =>
-            {
-                TModel? processableItem = item;
-                if (!processableItem.IsManaged)
-                    processableItem = realm.Find<TModel>(item.ID);
+        public bool Delete(TModel item) => deletionStore.Delete(item);
 
-                if (processableItem?.DeletePending != false)
-                    return false;
-
-                processableItem.DeletePending = true;
-                return true;
-            });
-        }
-
-        public void Undelete(TModel item)
-        {
-            // Importantly, begin the realm write *before* re-fetching, else the update realm may not be in a consistent state
-            // (ie. if an async import finished very recently).
-            Realm.Write(realm =>
-            {
-                TModel? processableItem = item;
-                if (!processableItem.IsManaged)
-                    processableItem = realm.Find<TModel>(item.ID);
-
-                if (processableItem?.DeletePending != true)
-                    return;
-
-                processableItem.DeletePending = false;
-            });
-        }
+        public void Undelete(TModel item) => deletionStore.Undelete(item);
 
         public virtual bool IsAvailableLocally(TModel model) => true;
 
