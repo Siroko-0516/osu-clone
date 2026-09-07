@@ -1,17 +1,72 @@
 @page "/"
 @using osu.Game
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
 <PageTitle>osu! web port laboratory</PageTitle>
 
-<main class="status">
-    <div class="ring" aria-hidden="true"><span>web</span></div>
-    <p class="phase">BROWSER PORT · PHASE 1</p>
-    <h1>osu!lazer game code is loaded.</h1>
-    <p>The browser is now running a build that directly references the original osu.Game project. The next milestone is replacing the native host with a canvas-backed browser host.</p>
+<main class="port-shell">
+    <header>
+        <div class="ring" aria-hidden="true"><span>web</span></div>
+        <div>
+            <p class="phase">BROWSER PORT · PHASE 2</p>
+            <h1>Canvas host is online.</h1>
+            <p class="lede">The browser render loop and input bridge are now connected to .NET WebAssembly.</p>
+        </div>
+    </header>
+
+    <section class="canvas-panel">
+        <canvas @ref="canvas" tabindex="0" aria-label="osu browser host diagnostic canvas"></canvas>
+        <div class="canvas-hint">Move or click the pointer · press Z / X</div>
+    </section>
+
     <dl>
         <div><dt>.NET runtime</dt><dd>browser-wasm</dd></div>
         <div><dt>Game assembly</dt><dd>@typeof(OsuGame).Assembly.GetName().Name</dd></div>
-        <div><dt>Renderer</dt><dd>WebGL adapter next</dd></div>
-        <div><dt>Audio</dt><dd>Web Audio adapter pending</dd></div>
+        <div><dt>Canvas frames</dt><dd>@frameCount</dd></div>
+        <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
     </dl>
 </main>
+
+@code {
+    private ElementReference canvas;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<Home>? self;
+    private long frameCount;
+    private string inputStatus = "waiting";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js");
+        self = DotNetObjectReference.Create(this);
+        await module.InvokeVoidAsync("startBrowserHost", canvas, self);
+    }
+
+    [JSInvokable]
+    public Task ReportFrame(long frames)
+    {
+        frameCount = frames;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task ReportInput(string kind, double x, double y)
+    {
+        inputStatus = $"{kind} · {x:0}, {y:0}";
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            await module.InvokeVoidAsync("stopBrowserHost");
+            await module.DisposeAsync();
+        }
+
+        self?.Dispose();
+    }
+}
