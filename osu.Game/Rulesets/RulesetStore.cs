@@ -26,7 +26,7 @@ namespace osu.Game.Rulesets
         /// </summary>
         public abstract IEnumerable<RulesetInfo> AvailableRulesets { get; }
 
-        protected RulesetStore(Storage? storage = null)
+        protected RulesetStore(Storage? storage = null, bool discoverFromDisk = true)
         {
             // On android in release configuration assemblies are loaded from the apk directly into memory.
             // We cannot read assemblies from cwd, so should check loaded assemblies instead.
@@ -35,7 +35,7 @@ namespace osu.Game.Rulesets
             // This null check prevents Android from attempting to load the rulesets from disk,
             // as the underlying path "AppContext.BaseDirectory", despite being non-nullable, it returns null on android.
             // See https://github.com/xamarin/xamarin-android/issues/3489.
-            if (RuntimeInfo.StartupDirectory.IsNotNull())
+            if (discoverFromDisk && RuntimeInfo.StartupDirectory.IsNotNull())
                 loadFromDisk();
 
             // the event handler contains code for resolving dependency on the game assembly for rulesets located outside the base game directory.
@@ -44,7 +44,7 @@ namespace osu.Game.Rulesets
             AppDomain.CurrentDomain.AssemblyResolve += resolveRulesetDependencyAssembly;
 
             RulesetStorage = storage?.GetStorageForDirectory(@"rulesets");
-            if (RulesetStorage != null)
+            if (discoverFromDisk && RulesetStorage != null)
                 loadUserRulesets(RulesetStorage);
         }
 
