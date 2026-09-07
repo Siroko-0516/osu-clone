@@ -40,3 +40,7 @@ needs to be blittable.
 ```
 
 This confirms the first concrete platform boundary: the packaged osu!framework pulls its native SDL host into the browser publish. The next change must happen in an osu-framework fork, where a browser host can exclude SDL and supply canvas, input, audio, and storage adapters. This cannot be correctly solved by hiding the error in the game project.
+
+## Current browser boot fix
+
+The browser framework fork now recognises `OperatingSystem.IsBrowser()` as a dedicated runtime platform. The web integration build tracks framework commit `67d13f4`, removing the `RuntimeInfo` type-initialisation failure that previously stopped `OsuGame` before its first frame.
