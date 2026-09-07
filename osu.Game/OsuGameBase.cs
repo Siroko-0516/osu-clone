@@ -265,7 +265,7 @@ namespace osu.Game
         [BackgroundDependencyLoader]
         private void load(ReadableKeyCombinationProvider keyCombinationProvider, FrameworkConfigManager frameworkConfig)
         {
-            if (RuntimeInfo.IsBrowser)
+            if (OperatingSystem.IsBrowser())
             {
                 // Browser WebAssembly does not provide the legacy MD5 implementation.
                 // The hash is only used to identify desktop builds to online services,
