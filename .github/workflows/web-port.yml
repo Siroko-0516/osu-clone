@@ -5,6 +5,7 @@ on:
     paths:
       - 'osu.Web/**'
       - 'osu.Web.Probe/**'
+      - 'osu.Game/osu.Game.csproj'
       - 'WEB_PORTING.md'
       - '.github/workflows/web-port.yml'
   workflow_dispatch:
@@ -14,21 +15,31 @@ jobs:
   wasm-host:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout osu
+        uses: actions/checkout@v4
+
+      - name: Checkout browser framework fork
+        uses: actions/checkout@v4
+        with:
+          repository: Siroko-0516/osu-framework-clone
+          ref: web-port
+          path: osu-framework-clone
+
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
       - run: dotnet workload install wasm-tools
-      - name: Build standalone browser host
-        run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web
-      - name: Probe full osu.Game browser compatibility
-        id: game-probe
-        continue-on-error: true
-        run: dotnet build osu.Web.Probe/osu.Web.Probe.csproj -c Release
-      - name: Record probe result
-        run: |
-          echo "osu.Game browser compatibility probe outcome: ${{ steps.game-probe.outcome }}" > artifacts/web/compatibility-probe.txt
+
+      - name: Build osu.Game against browser framework
+        run: dotnet build osu.Web.Probe/osu.Web.Probe.csproj -c Release -p:OsuBrowserBuild=true
+
+      - name: Publish WebAssembly host
+        run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true
+
       - uses: actions/upload-artifact@v4
         with:
-          name: osu-web-phase-0
+          name: osu-web-framework-integration
           path: artifacts/web/wwwroot
