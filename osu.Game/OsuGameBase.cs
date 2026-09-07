@@ -265,16 +265,26 @@ namespace osu.Game
         [BackgroundDependencyLoader]
         private void load(ReadableKeyCombinationProvider keyCombinationProvider, FrameworkConfigManager frameworkConfig)
         {
-            try
+            if (RuntimeInfo.IsBrowser)
             {
-                using (var str = File.OpenRead(typeof(OsuGameBase).Assembly.Location))
-                    VersionHash = str.ComputeMD5Hash();
+                // Browser WebAssembly does not provide the legacy MD5 implementation.
+                // The hash is only used to identify desktop builds to online services,
+                // which are intentionally unavailable in the offline browser port.
+                VersionHash = $"browser-{Version}";
             }
-            catch
+            else
             {
-                // special case for android builds, which can't read DLLs from a packed apk.
-                // should eventually be handled in a better way.
-                VersionHash = $"{Version}-{RuntimeInfo.OS}".ComputeMD5Hash();
+                try
+                {
+                    using (var str = File.OpenRead(typeof(OsuGameBase).Assembly.Location))
+                        VersionHash = str.ComputeMD5Hash();
+                }
+                catch
+                {
+                    // special case for android builds, which can't read DLLs from a packed apk.
+                    // should eventually be handled in a better way.
+                    VersionHash = $"{Version}-{RuntimeInfo.OS}".ComputeMD5Hash();
+                }
             }
 
             Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
