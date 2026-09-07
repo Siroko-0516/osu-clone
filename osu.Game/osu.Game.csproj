@@ -3,6 +3,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <OutputType>Library</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OsuFrameworkProjectPath Condition="'$(OsuFrameworkProjectPath)' == ''">../osu-framework-clone/osu.Framework/osu.Framework.csproj</OsuFrameworkProjectPath>
   </PropertyGroup>
   <PropertyGroup Label="Nuget">
     <Title>osu!</Title>
@@ -39,7 +40,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Realm" Version="20.1.0" />
-    <PackageReference Include="ppy.osu.Framework" Version="2026.807.0" />
+    <PackageReference Include="ppy.osu.Framework" Version="2026.807.0" Condition="'$(OsuBrowserBuild)' != 'true'" />
     <PackageReference Include="ppy.osu.Game.Resources" Version="2026.710.0" />
     <PackageReference Include="Sentry" Version="6.6.0" />
     <PackageReference Include="SharpCompress" Version="0.49.1" />
@@ -52,5 +53,8 @@
     <PackageReference Include="System.IO.FileSystem.Primitives" Version="4.3.0" />
     <PackageReference Include="System.Runtime.InteropServices" Version="4.3.0" />
     <PackageReference Include="System.Runtime.Handles" Version="4.3.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(OsuBrowserBuild)' == 'true'">
+    <ProjectReference Include="$(OsuFrameworkProjectPath)" AdditionalProperties="OsuBrowserBuild=true" />
   </ItemGroup>
 </Project>
