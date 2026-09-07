@@ -289,12 +289,13 @@ namespace osu.Game
 
             Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
 
+            if (OperatingSystem.IsBrowser())
+                initialiseRulesets(new AssemblyRulesetStore(discoverFromDisk: false));
+
             dependencies.Cache(realm = new RealmAccess(Storage, CLIENT_DATABASE_FILENAME, Host.UpdateThread));
 
-            dependencies.CacheAs<RulesetStore>(RulesetStore = new RealmRulesetStore(realm, Storage));
-            dependencies.CacheAs<IRulesetStore>(RulesetStore);
-
-            Decoder.RegisterDependencies(RulesetStore);
+            if (!OperatingSystem.IsBrowser())
+                initialiseRulesets(new RealmRulesetStore(realm, Storage));
 
             dependencies.CacheAs(Storage);
 
@@ -451,6 +452,13 @@ namespace osu.Game
             // if this becomes a more common thing, tracked settings should be reconsidered to allow local DI.
             LocalConfig.LookupSkinName = id => SkinManager.Query(s => s.ID == id)?.ToString() ?? "Unknown";
             LocalConfig.LookupKeyBindings = l => KeyBindingStore.GetBindingsStringFor(l);
+        }
+
+        private void initialiseRulesets(RulesetStore store)
+        {
+            dependencies.CacheAs<RulesetStore>(RulesetStore = store);
+            dependencies.CacheAs<IRulesetStore>(store);
+            Decoder.RegisterDependencies(store);
         }
 
         private void updateLanguage() => CurrentLanguage.Value = LanguageExtensions.GetLanguageFor(frameworkLocale.Value, localisationParameters.Value);
