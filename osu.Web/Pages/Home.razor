@@ -7,6 +7,7 @@
 @using osu.Framework.Platform
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <PageTitle>osu! web port laboratory</PageTitle>
 
@@ -15,8 +16,9 @@
         <div class="ring" aria-hidden="true"><span>web</span></div>
         <div>
             <p class="phase">BROWSER PORT · RENDERER PHASE</p>
-            <h1>Framework renderer diagnostics.</h1>
-            <p class="lede">This tests the browser renderer only. The original OsuGame and its main menu are not running yet.</p>
+            <h1>@(Original ? "Original OsuGame startup probe." : "Framework renderer diagnostics.")</h1>
+            <p class="lede">@(Original ? "This attempts the original game startup and reports the first blocking error. Successful gameplay is not yet verified." : "This tests the browser renderer only. The original OsuGame and its main menu are not running yet.")</p>
+            <button @onclick="SwitchRuntime">@(Original ? "Open framework diagnostics" : "Attempt original OsuGame startup")</button>
         </div>
     </header>
 
@@ -40,7 +42,7 @@
     </div>
 
     <dl>
-        <div><dt>Original game</dt><dd>Not started — native services still require porting</dd></div>
+        <div><dt>Original game</dt><dd>@(Original ? "Startup requested — see runtime status; gameplay unverified" : "Not started — native services still require porting")</dd></div>
         <div><dt>Diagnostic runtime</dt><dd>@gameStatus</dd></div>
         <div><dt>GPU renderer</dt><dd>@rendererStatus</dd></div>
         <div><dt>Diagnostic frames</dt><dd>@gameFrameCount</dd></div>
@@ -56,6 +58,11 @@
 </main>
 
 @code {
+    [SupplyParameterFromQuery]
+    public bool Original { get; set; }
+
+    private void SwitchRuntime() => Navigation.NavigateTo($"?original={!Original}", forceLoad: true);
+
     private ElementReference canvas;
     private IJSObjectReference? module;
     private IJSInProcessObjectReference? audioModule;
@@ -95,19 +102,23 @@
             gameStatus = "initialising BrowserGameHost";
             StateHasChanged();
             gameHost = new WebGameHost("osu-web");
-            game = new BrowserBootstrapGame();
+            osu.Framework.Game selectedGame;
+            if (Original)
+                selectedGame = new OsuGame();
+            else
+                selectedGame = game = new BrowserBootstrapGame();
             // Framework threads install their own SynchronizationContext. Blazor must
             // regain its context before awaiting JS interop or dispatching UI work.
             var browserContext = System.Threading.SynchronizationContext.Current;
             try
             {
-                gameHost.Run(game);
+                gameHost.Run(selectedGame);
             }
             finally
             {
                 System.Threading.SynchronizationContext.SetSynchronizationContext(browserContext);
             }
-            gameStatus = "Framework diagnostic running — not OsuGame";
+            gameStatus = Original ? "Original OsuGame startup requested — gameplay unverified" : "Framework diagnostic running — not OsuGame";
         }
         catch (Exception exception)
         {
@@ -236,3 +247,4 @@
         }
     }
 }
+
