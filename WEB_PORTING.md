@@ -44,3 +44,5 @@ This confirms the first concrete platform boundary: the packaged osu!framework p
 ## Current browser boot fix
 
 The browser framework fork now recognises `OperatingSystem.IsBrowser()` as a dedicated runtime platform. The web integration build tracks framework commit `6b24601`, removing the `RuntimeInfo` type-initialisation failure and substituting a browser-safe no-output mixer for native BASS during early boot.
+
+The audio thread also skips native BASS CPU statistics in WebAssembly. Browser audio remains intentionally silent until the Web Audio backend is connected.
