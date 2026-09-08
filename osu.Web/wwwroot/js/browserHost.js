@@ -7,7 +7,7 @@ let frameworkProgram;
 let frameworkBuffer;
 let frame = 0;
 let pumpPending = false;
-let pointer = { x: 0, y: 0, down: false };
+let pointer = { x: 0, y: 0, down: false };\nlet activePointerId = null;
 const keys = new Set();
 let ruleset = "osu";
 let frameworkFrame;
@@ -198,8 +198,8 @@ export async function startBrowserHost(target, dotnetReference) {
     const position = event => {
         const rect = canvas.getBoundingClientRect();
         const ratio = window.devicePixelRatio || 1;
-        pointer.x = (event.clientX - rect.left) * ratio;
-        pointer.y = (event.clientY - rect.top) * ratio;
+        pointer.x = Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * ratio));
+        pointer.y = Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * ratio));
     };
 
     listen(canvas, "pointermove", event => {
@@ -214,20 +214,32 @@ export async function startBrowserHost(target, dotnetReference) {
         }
     }, { passive: false });
     listen(canvas, "pointerdown", event => {
+        if (activePointerId !== null && activePointerId !== event.pointerId)
+            return;
+
         event.preventDefault();
         position(event);
+        activePointerId = event.pointerId;
         pointer.down = true;
         canvas.setPointerCapture?.(event.pointerId);
         canvas.focus();
         dotnet.invokeMethodAsync("ReportInput", "pointer down", pointer.x, pointer.y);
     }, { passive: false });
     listen(window, "pointerup", event => {
+        if (event.pointerId !== activePointerId)
+            return;
+
         position(event);
         pointer.down = false;
+        activePointerId = null;
         dotnet.invokeMethodAsync("ReportInput", "pointer up", pointer.x, pointer.y);
     });
-    listen(window, "pointercancel", () => {
+    listen(window, "pointercancel", event => {
+        if (event.pointerId !== activePointerId)
+            return;
+
         pointer.down = false;
+        activePointerId = null;
         dotnet.invokeMethodAsync("ReportInput", "pointer cancel", pointer.x, pointer.y);
     });
     // Track physical key state ourselves. Browser key-repeat has a platform-defined delay
@@ -297,6 +309,8 @@ export function stopBrowserHost() {
     for (const remove of listeners.splice(0)) remove();
     animationFrame = undefined;
     pumpPending = false;
+    activePointerId = null;
+    pointer.down = false;
     dotnet = undefined;
     gl = undefined;
     frameworkProgram = undefined;
