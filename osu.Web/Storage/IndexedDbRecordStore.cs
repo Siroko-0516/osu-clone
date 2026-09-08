@@ -23,6 +23,12 @@ public sealed class IndexedDbRecordStore : IRecordStore, IAsyncDisposable
     public async Task<StoredRecord?> GetAsync(string collection, string id) =>
         await (await module.Value).InvokeAsync<StoredRecord?>("get", collection, id);
 
+    public async Task<StoredRecord[]> ListAsync(string collection, bool includeDeletePending = false) =>
+        await (await module.Value).InvokeAsync<StoredRecord[]>("list", collection, includeDeletePending);
+
+    public async Task<StoredRecord[]> SaveBatchAsync(IReadOnlyList<RecordChange> changes) =>
+        await (await module.Value).InvokeAsync<StoredRecord[]>("saveBatch", (object)changes);
+
     public async Task<StoredRecord> SaveAsync(string collection, string id, string payload, int schemaVersion, long expectedRevision) =>
         await (await module.Value).InvokeAsync<StoredRecord>("save", collection, id, payload, schemaVersion, expectedRevision);
 

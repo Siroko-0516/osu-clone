@@ -4,6 +4,7 @@
 #nullable enable
 
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace osu.Game.Database.Persistence
 {
@@ -14,6 +15,12 @@ namespace osu.Game.Database.Persistence
     public interface IRecordStore
     {
         Task<StoredRecord?> GetAsync(string collection, string id);
+
+        /// <summary>Reads a committed collection snapshot for asynchronous startup hydration.</summary>
+        Task<StoredRecord[]> ListAsync(string collection, bool includeDeletePending = false);
+
+        /// <summary>Saves all changes in one transaction. A conflict must roll back the entire batch.</summary>
+        Task<StoredRecord[]> SaveBatchAsync(IReadOnlyList<RecordChange> changes);
 
         /// <summary>
         /// Atomically saves a snapshot if its revision matches. Use revision zero only for creation.
@@ -28,4 +35,5 @@ namespace osu.Game.Database.Persistence
     }
 
     public sealed record StoredRecord(string Collection, string Id, string Payload, int SchemaVersion, long Revision, bool DeletePending);
+    public sealed record RecordChange(string Collection, string Id, string Payload, int SchemaVersion, long ExpectedRevision);
 }

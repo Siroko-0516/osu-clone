@@ -46,6 +46,14 @@ test('browser track clock, pause, seek-before-load, pitch modes, and disposal', 
         audio.configureTrack(id, .5, 0, 1.5, 1, false);
         assert.equal(media[0].preservesPitch, false);
         assert.throws(() => audio.configureTrack(id, 1, 0, 1.5, 1.5, false));
+        audio.playTrack(id);
+        await Promise.resolve(); await Promise.resolve();
+        media[0].ended = true;
+        media[0].paused = true;
+        media[0].dispatchEvent(new Event('ended'));
+        audio.unlockAudio();
+        await Promise.resolve(); await Promise.resolve();
+        assert.equal(media[0].paused, true, 'a later user gesture must not restart a completed track');
         audio.disposeTrack(id);
         assert.equal(media[0].paused, true);
         assert.doesNotThrow(() => audio.disposeTrack(id));

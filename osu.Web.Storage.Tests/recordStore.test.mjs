@@ -3,6 +3,50 @@ import assert from "node:assert/strict";
 import { IDBFactory } from "fake-indexeddb";
 import { createRecordStore } from "../osu.Web/wwwroot/js/recordStore.mjs";
 
+test("collection index upgrade preserves version-one data and filters soft deletion", async () => {
+    const factory = new IDBFactory();
+    await new Promise((resolve, reject) => {
+        const request = factory.open("upgrade", 1);
+        request.onupgradeneeded = () => {
+            const records = request.result.createObjectStore("records", {keyPath:["collection", "id"]});
+            records.put({collection:"skins",id:"legacy",payload:'{"name":"Existing"}',schemaVersion:1,revision:1,deletePending:false});
+        };
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {request.result.close(); resolve();};
+    });
+    const store = createRecordStore(factory, "upgrade");
+    assert.equal((await store.list("skins"))[0].payload, '{"name":"Existing"}');
+    await store.save("scores", "legacy", "{}", 1, 0);
+    await store.setDeletePending("skins", "legacy", true, 1);
+    assert.deepEqual(await store.list("skins"), []);
+    assert.equal((await store.list("skins", true)).length, 1);
+    await store.close();
+    const reopened = createRecordStore(factory, "upgrade");
+    assert.equal((await reopened.list("skins", true))[0].deletePending, true);
+    await reopened.close();
+});
+
+test("multi-record import commits together and rolls back every write on a stale revision", async () => {
+    const store = createRecordStore(new IDBFactory());
+    const changes = [
+        {collection:"beatmapSets",id:"set",payload:'{"name":"Test"}',schemaVersion:1,expectedRevision:0},
+        {collection:"beatmaps",id:"map",payload:'{"setId":"set"}',schemaVersion:1,expectedRevision:0}
+    ];
+    const created = await store.saveBatch(changes);
+    assert.deepEqual(created.map(record => record.revision), [1,1]);
+    await assert.rejects(store.saveBatch([
+        {...changes[0],payload:'{"name":"Must roll back"}',expectedRevision:1},
+        {...changes[1],expectedRevision:0}
+    ]), /conflict/);
+    assert.deepEqual(await store.get("beatmapSets", "set"), created[0]);
+    assert.deepEqual(await store.get("beatmaps", "map"), created[1]);
+    await assert.rejects(store.saveBatch([changes[0], changes[0]]), /same record/);
+    await assert.rejects(store.saveBatch([{...changes[0],id:"new"},{...changes[1],payload:"broken JSON"}]));
+    assert.equal(await store.get("beatmapSets", "new"), null);
+    assert.deepEqual(await store.saveBatch([]), []);
+    await store.close();
+});
+
 test("committed metadata survives closing and reopening, and collections stay isolated", async () => {
     const factory = new IDBFactory();
     const first = createRecordStore(factory);

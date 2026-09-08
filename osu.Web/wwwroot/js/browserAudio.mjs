@@ -14,6 +14,7 @@ export function createTrack(bytes) {
     const source = ctx.createMediaElementSource(audio);
     source.connect(gain).connect(pan).connect(ctx.destination);
     const entry = {audio, url, gain, pan, source, requested:false, error:'', seekTo:null};
+    audio.addEventListener('ended', () => { entry.requested = false; });
     audio.addEventListener('error', () => { entry.error = audio.error?.message || 'Audio decoding failed'; });
     audio.addEventListener('loadedmetadata', () => {
         if (entry.seekTo !== null) { audio.currentTime = Math.min(audio.duration, entry.seekTo); entry.seekTo = null; }
