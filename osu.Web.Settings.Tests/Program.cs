@@ -26,9 +26,9 @@ settings.WriteSettings("osu", 1, new Dictionary<string, string> { ["independent"
 records.FailNext = true;
 try { await settings.FlushAsync(); throw new Exception("Expected commit failure."); }
 catch (IOException) { }
-Check(!records.Items.ContainsKey("osu:1"), "Failed commit changed persisted state.");
+Check(!records.Items.ContainsKey(MemoryRecords.Key("ruleset-settings", "osu:1")), "Failed commit changed persisted state.");
 await settings.FlushAsync();
-Check(records.Items.ContainsKey("osu:1"), "Failed commit discarded pending values.");
+Check(records.Items.ContainsKey(MemoryRecords.Key("ruleset-settings", "osu:1")), "Failed commit discarded pending values.");
 Check(!settings.ReadSettings("osu", 0).ContainsKey("independent"), "Variant settings leaked.");
 Console.WriteLine("PASS commit retry and variant isolation");
 
@@ -41,7 +41,7 @@ records.Gate.SetResult();
 await flush;
 records.Gate = null;
 await settings.FlushAsync();
-Check(JsonSerializer.Deserialize<Dictionary<string, string>>(records.Items["osu:1"].Payload)!["independent"] == "second", "In-flight commit lost a later setting change.");
+Check(JsonSerializer.Deserialize<Dictionary<string, string>>(records.Items[MemoryRecords.Key("ruleset-settings", "osu:1")].Payload)!["independent"] == "second", "In-flight commit lost a later setting change.");
 Console.WriteLine("PASS changes during commit remain dirty");
 
 var stale = await BrowserSettingsStore.CreateAsync(records);
@@ -50,7 +50,7 @@ await settings.FlushAsync();
 stale.WriteSettings("osu", 1, new Dictionary<string, string> { ["independent"] = "stale tab" });
 try { await stale.FlushAsync(); throw new Exception("Expected revision conflict."); }
 catch (IOException) { }
-Check(JsonSerializer.Deserialize<Dictionary<string, string>>(records.Items["osu:1"].Payload)!["independent"] == "newer tab", "Stale tab overwrote committed settings.");
+Check(JsonSerializer.Deserialize<Dictionary<string, string>>(records.Items[MemoryRecords.Key("ruleset-settings", "osu:1")].Payload)!["independent"] == "newer tab", "Stale tab overwrote committed settings.");
 Console.WriteLine("PASS stale writers cannot overwrite settings");
 
 var keys = await BrowserKeyBindingStore.CreateAsync(records);
@@ -96,6 +96,29 @@ var filtered = mappingProbe.Apply(new IKeyBinding[]
 Check(filtered.Length == 2 && filtered.All(binding => binding.KeyCombination.Keys.Contains(InputKey.None)), "Original gameplay mapping safety rules were bypassed.");
 Console.WriteLine("PASS original gameplay duplicate and wheel-binding filters");
 
+var catalogueRecords = new MemoryRecords();
+var catalogue = await BeatmapCatalogStore.CreateAsync(catalogueRecords);
+var set = new BeatmapSetSnapshot("set-1", "artist", "title", "mapper", "imports/set-1");
+var difficulties = new[]
+{
+    new BeatmapSnapshot("map-1", set.Id, "Normal", 0, 2.1, "imports/set-1/normal.osu", "imports/set-1/audio.mp3"),
+    new BeatmapSnapshot("map-2", set.Id, "4K Hard", 3, 3.8, "imports/set-1/4k-hard.osu", "imports/set-1/audio.mp3")
+};
+await catalogue.SaveSetAsync(set, difficulties);
+var restoredCatalogue = await BeatmapCatalogStore.CreateAsync(catalogueRecords);
+Check(restoredCatalogue.Sets.Single() == set, "Beatmap set metadata did not survive restart.");
+Check(restoredCatalogue.GetBeatmaps(set.Id).Select(map => map.Id).ToHashSet().SetEquals(new[] { "map-1", "map-2" }), "Beatmap difficulties did not survive restart.");
+catalogueRecords.FailNext = true;
+try
+{
+    await restoredCatalogue.SaveSetAsync(set with { Title = "Must roll back" }, new[] { difficulties[0] with { DifficultyName = "Must roll back" } });
+    throw new Exception("Expected catalogue commit failure.");
+}
+catch (IOException) { }
+Check(restoredCatalogue.Sets.Single().Title == "title" && restoredCatalogue.GetBeatmaps(set.Id).Single(map => map.Id == "map-1").DifficultyName == "Normal",
+    "Failed atomic beatmap import changed the active catalogue.");
+Console.WriteLine("PASS browser beatmap catalogue atomic import and restart hydration");
+
 sealed class MappingProbe : osu.Game.Rulesets.UI.RulesetInputManager<OsuAction>.RulesetKeyBindingContainer
 {
     public MappingProbe() : base(new OsuRuleset().RulesetInfo, 0, SimultaneousBindingMode.Unique) { }
@@ -112,18 +135,20 @@ sealed class MemoryRecords : IRecordStore
     public bool FailNext;
     public TaskCompletionSource? Gate;
     public readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public Task<StoredRecord?> GetAsync(string collection, string id) => Task.FromResult(Items.GetValueOrDefault(id));
+    public static string Key(string collection, string id) => collection + "\0" + id;
+    public Task<StoredRecord?> GetAsync(string collection, string id) => Task.FromResult(Items.GetValueOrDefault(Key(collection, id)));
     public Task<StoredRecord[]> ListAsync(string collection, bool includeDeletePending = false) => Task.FromResult(Items.Values.Where(r => r.Collection == collection).ToArray());
     public async Task<StoredRecord[]> SaveBatchAsync(IReadOnlyList<RecordChange> changes)
     {
         if (Gate is not null) { Started.TrySetResult(); await Gate.Task; }
         if (FailNext) { FailNext = false; throw new IOException("Simulated storage quota failure."); }
         foreach (var change in changes)
-            if ((Items.GetValueOrDefault(change.Id)?.Revision ?? 0) != change.ExpectedRevision) throw new IOException("Revision conflict.");
+            if ((Items.GetValueOrDefault(Key(change.Collection, change.Id))?.Revision ?? 0) != change.ExpectedRevision) throw new IOException("Revision conflict.");
         var committed = changes.Select(c => new StoredRecord(c.Collection, c.Id, c.Payload, c.SchemaVersion, c.ExpectedRevision + 1, false)).ToArray();
-        foreach (var item in committed) Items[item.Id] = item;
+        foreach (var item in committed) Items[Key(item.Collection, item.Id)] = item;
         return committed;
     }
     public Task<StoredRecord> SaveAsync(string collection, string id, string payload, int schemaVersion, long expectedRevision) => throw new NotSupportedException();
     public Task<StoredRecord?> SetDeletePendingAsync(string collection, string id, bool value, long expectedRevision) => throw new NotSupportedException();
 }
+

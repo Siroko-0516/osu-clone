@@ -86,6 +86,7 @@
         <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
         <div><dt>Original ruleset action test</dt><dd>@(game?.LastAction ?? "none") · @(game?.ActionPressCount ?? 0) pressed / @(game?.ActionReleaseCount ?? 0) released · @keyBindingStatus</dd></div>
         <div><dt>Browser file storage</dt><dd>@fileStatus</dd></div>
+        <div><dt>Browser beatmap catalogue</dt><dd>@beatmapCatalogStatus</dd></div>
         <div><dt>Framework audio position</dt><dd>@(game?.AudioTestTrack?.CurrentTime.ToString("0") ?? "0") ms</dd></div>
         <div><dt>Framework sample</dt><dd>@(game?.AudioTestSample?.Length.ToString("0") ?? "0") ms · @(game?.SamplePlayCount ?? 0) plays</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
@@ -133,6 +134,8 @@
     private BrowserFileStore? fileStore;
     private osu.Framework.Platform.Storage? persistentStorage;
     private string fileStatus = "Loading browser files";
+    private osu.Game.Database.Persistence.BeatmapCatalogStore? beatmapCatalog;
+    private string beatmapCatalogStatus = "Loading browser beatmap metadata";
     private bool bindingsSaving;
     private List<BindingEditorRow> bindingRows = new();
     private static readonly osu.Framework.Input.Bindings.InputKey[] selectableKeys = Enum.GetValues<osu.Framework.Input.Bindings.InputKey>()
@@ -259,6 +262,8 @@
         {
             settingsStore = await BrowserSettingsStore.CreateAsync(Records);
             keyBindingStore = await BrowserKeyBindingStore.CreateAsync(Records);
+            beatmapCatalog = await osu.Game.Database.Persistence.BeatmapCatalogStore.CreateAsync(Records);
+            beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             keyBindingStatus = "Browser key bindings loaded";
             LoadBindingEditor();
             foreach (var ruleset in new osu.Game.Rulesets.Ruleset[] { new OsuRuleset(), new ManiaRuleset(), new TaikoRuleset() })
@@ -474,3 +479,4 @@
         }
     }
 }
+
