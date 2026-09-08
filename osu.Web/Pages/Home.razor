@@ -85,6 +85,7 @@
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
         <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
         <div><dt>Original ruleset action test</dt><dd>@(game?.LastAction ?? "none") · @(game?.ActionPressCount ?? 0) pressed / @(game?.ActionReleaseCount ?? 0) released · @keyBindingStatus</dd></div>
+        <div><dt>Browser file storage</dt><dd>@fileStatus</dd></div>
         <div><dt>Framework audio position</dt><dd>@(game?.AudioTestTrack?.CurrentTime.ToString("0") ?? "0") ms</dd></div>
         <div><dt>Framework sample</dt><dd>@(game?.AudioTestSample?.Length.ToString("0") ?? "0") ms · @(game?.SamplePlayCount ?? 0) plays</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
@@ -129,6 +130,9 @@
     private readonly List<IDisposable> rulesetConfigs = new();
     private bool settingsSaving;
     private string settingsStatus = "Loading browser settings";
+    private BrowserFileStore? fileStore;
+    private osu.Framework.Platform.Storage? persistentStorage;
+    private string fileStatus = "Loading browser files";
     private bool bindingsSaving;
     private List<BindingEditorRow> bindingRows = new();
     private static readonly osu.Framework.Input.Bindings.InputKey[] selectableKeys = Enum.GetValues<osu.Framework.Input.Bindings.InputKey>()
@@ -283,6 +287,10 @@
             gameStatus = "initialising BrowserGameHost";
             StateHasChanged();
             gameHost = new WebGameHost("osu-web");
+            persistentStorage = gameHost.GetStorage("/osu-data");
+            fileStore = new BrowserFileStore(JS);
+            int restoredFiles = await fileStore.HydrateAsync(persistentStorage);
+            fileStatus = $"{restoredFiles} browser files restored";
             osu.Framework.Game selectedGame;
             if (Original)
                 selectedGame = new OsuGame();
@@ -329,16 +337,26 @@
         return InvokeAsync(StateHasChanged);
     }
 
-    private void StartAudioTest()
+    private async Task StartAudioTest()
     {
         audioModule?.InvokeVoid("unlockAudio");
         game?.StartAudioTest();
+        await FlushFiles();
     }
 
-    private void StartSampleTest()
+    private async Task StartSampleTest()
     {
         audioModule?.InvokeVoid("unlockAudio");
         game?.StartSampleTest();
+        await FlushFiles();
+    }
+
+    private async Task FlushFiles()
+    {
+        if (fileStore is null || persistentStorage is null) return;
+        try { await fileStore.FlushAsync(persistentStorage); fileStatus = "Browser files saved"; }
+        catch (Exception exception) { fileStatus = "File save failed: " + exception.Message; }
+        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -424,6 +442,15 @@
         {
             try { await settingsStore.FlushAsync(); }
             catch (Exception exception) { Console.Error.WriteLine("Settings commit failed during shutdown: " + exception); }
+        }
+        if (fileStore is not null)
+        {
+            if (persistentStorage is not null)
+            {
+                try { await fileStore.FlushAsync(persistentStorage); }
+                catch (Exception exception) { Console.Error.WriteLine("File commit failed during shutdown: " + exception); }
+            }
+            await fileStore.DisposeAsync();
         }
 
         if (module is not null)
