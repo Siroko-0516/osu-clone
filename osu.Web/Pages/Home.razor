@@ -49,7 +49,7 @@
             <div class="binding-title"><strong>@BindingEditorTitle key bindings</strong><button @onclick="ResetCurrentBindings">Restore defaults</button></div>
             @foreach (var row in bindingRows)
             {
-                <label><span>@row.ActionName</span><select value="@((int)row.Key)" @onchange="args => ChangeBinding(row, args)" disabled="@bindingsSaving">
+                <label @key="row"><span>@row.ActionName</span><select value="@((int)row.Key)" @onchange="args => ChangeBinding(row, args)" disabled="@bindingsSaving">
                     @foreach (var key in selectableKeys)
                     {
                         <option value="@((int)key)">@key</option>
@@ -197,6 +197,7 @@
             if (bindingRows.Any(other => !ReferenceEquals(other, row) && other.Key == next))
             {
                 keyBindingStatus = $"{next} is already assigned in {BindingEditorTitle}";
+                LoadBindingEditor();
                 await InvokeAsync(StateHasChanged);
                 return;
             }
