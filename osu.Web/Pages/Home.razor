@@ -34,7 +34,7 @@
 
     <section class="canvas-panel">
         <canvas @ref="canvas" tabindex="0" aria-label="osu browser WebGL host diagnostic canvas"></canvas>
-        <div class="canvas-hint">Move or click the pointer · press Z / X or arrow keys</div>
+        <div class="canvas-hint">@ModeInputHint</div>
     </section>
 
     <div>
@@ -85,6 +85,14 @@
     private string gameStatus = "waiting";
     private string inputStatus = "waiting";
     private string selectedMode = "osu";
+    private string ModeInputHint => selectedMode switch
+    {
+        "osu" => "osu!standard · aim with the pointer · hit/hold with mouse or Z / X",
+        "mania" => "osu!mania · play the note lanes with keyboard keys",
+        "taiko" => "osu!taiko · hit rim/centre with D / F / J / K",
+        "catch" => "osu!catch · move with Z / X or ← / → · dash with Shift",
+        _ => "Keyboard input"
+    };
     private bool gameFailed;
     private BrowserSettingsStore? settingsStore;
     private BrowserKeyBindingStore? keyBindingStore;

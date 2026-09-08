@@ -18,8 +18,11 @@ test('input bridge preserves short taps, focus release, and scaled pointer coord
     try {
         emit(canvas, 'keydown', {code:'KeyZ'});
         assert.equal(audioUnlocks, 1, 'the first user gesture unlocks audio before frame processing');
+        assert.equal(bridge.hasHeldKeys(), true);
+        assert.deepEqual(bridge.heldKeys(), ['KeyZ']);
         emit(canvas, 'keydown', {code:'KeyZ',repeat:true});
         emit(window, 'keyup', {code:'KeyZ'});
+        assert.equal(bridge.hasHeldKeys(), false);
         assert.deepEqual(bridge.drain(), [
             {kind:'key',code:'KeyZ',pressed:true},
             {kind:'key',code:'KeyZ',pressed:false}

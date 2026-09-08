@@ -81,6 +81,8 @@ export function attachBrowserInput(canvas) {
     listen(document, 'visibilitychange', () => { if (document.hidden) reset(); });
     return {
         drain: () => events.splice(0),
+        hasHeldKeys: () => keys.size > 0,
+        heldKeys: () => [...keys],
         reset,
         dispose() { for (const fn of remove) fn(); events.length = 0; keys.clear(); buttons.clear(); }
     };

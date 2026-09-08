@@ -6,6 +6,14 @@ const source = await readFile(new URL('../osu.Web/wwwroot/js/browserHost.js', im
 const importable = source.replace("'./browserInput.mjs'", JSON.stringify(new URL('../osu.Web/wwwroot/js/browserInput.mjs', import.meta.url).href));
 const host = await import(`data:text/javascript;base64,${Buffer.from(importable).toString('base64')}`);
 
+test('only standard combines keyboard hold with pointer drag', () => {
+    assert.equal(host.isPointerDrag('osu', false, true), true);
+    assert.equal(host.isPointerDrag('mania', false, true), false);
+    assert.equal(host.isPointerDrag('taiko', false, true), false);
+    assert.equal(host.isPointerDrag('catch', false, true), false);
+    assert.equal(host.isPointerDrag('mania', true, false), true);
+});
+
 test('renderer startup and texture transport', async () => {
     const reports = [];
     const bridge = { invokeMethodAsync: async (...args) => reports.push(args) };

@@ -24,9 +24,15 @@ let lastKeyboardState = "";
 const rulesetKeys = {
     osu: new Set(["KeyZ", "KeyX"]),
     mania: new Set(["KeyD", "KeyF", "KeyJ", "KeyK"]),
-    taiko: new Set(["KeyZ", "KeyX", "KeyC", "KeyV"]),
-    catch: new Set(["ArrowLeft", "ArrowRight"])
+    taiko: new Set(["KeyD", "KeyF", "KeyJ", "KeyK"]),
+    catch: new Set(["KeyZ", "KeyX", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight"])
 };
+
+export function isPointerDrag(mode, pointerDown, keyboardDown) {
+    // In osu!standard a keyboard hit button and pointer movement are one combined
+    // aim/hold gesture. Other rulesets use lane/drum/movement keys independently.
+    return pointerDown || (mode === "osu" && keyboardDown);
+}
 
 function reportKeyboardState(action) {
     const active = [...keys].sort().join(" + ") || "none";
@@ -230,7 +236,8 @@ export async function startBrowserHost(target, dotnetReference) {
         const now = performance.now();
         if (now - lastPointerReport >= 50) {
             lastPointerReport = now;
-            dotnet.invokeMethodAsync("ReportInput", pointer.down ? "pointer drag" : "pointer move", pointer.x, pointer.y);
+            const dragging = isPointerDrag(ruleset, pointer.down, inputBridge?.hasHeldKeys() ?? false);
+            dotnet.invokeMethodAsync("ReportInput", dragging ? "pointer drag" : "pointer move", pointer.x, pointer.y);
         }
     }, { passive: false });
     listen(canvas, "pointerdown", event => {
@@ -309,7 +316,7 @@ export async function startBrowserHost(target, dotnetReference) {
             gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
             gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
             gl.uniform1f(uniforms.time, time / 1000);
-            gl.uniform1f(uniforms.down, pointer.down ? 1 : 0);
+            gl.uniform1f(uniforms.down, isPointerDrag(ruleset, pointer.down, inputBridge?.hasHeldKeys() ?? false) ? 1 : 0);
             gl.uniform1f(uniforms.keys, keys.size);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
