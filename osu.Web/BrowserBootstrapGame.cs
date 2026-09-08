@@ -5,6 +5,8 @@ using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Graphics.Sprites;
+using osu.Framework.Graphics.Textures;
 using osu.Framework.Input.Events;
 using osu.Framework.Audio.Track;
 using osu.Framework.Audio.Sample;
@@ -16,6 +18,7 @@ using osu.Game.Rulesets.Mania;
 using osu.Game.Rulesets.Taiko;
 using osu.Game.Rulesets.Catch;
 using osu.Game.Rulesets.UI;
+using osu.Game.Resources;
 using osuTK.Graphics;
 
 namespace osu.Web
@@ -152,8 +155,12 @@ namespace osu.Web
         }
 
         [BackgroundDependencyLoader]
-        private void load()
+        private void load(TextureStore textures)
         {
+            // Exercise the real osu! resource and texture pipeline here. This is the
+            // original embedded logo asset, not a web-side copy or replacement image.
+            Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
+
             Children = new Drawable[]
             {
                 new Box
@@ -161,12 +168,12 @@ namespace osu.Web
                     RelativeSizeAxes = Axes.Both,
                     Colour = new Color4(18, 12, 24, 255),
                 },
-                new Box
+                new Sprite
                 {
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
-                    Size = new osuTK.Vector2(360, 120),
-                    Colour = new Color4(236, 52, 123, 255),
+                    Size = new osuTK.Vector2(320),
+                    Texture = textures.Get(@"Menu/logo"),
                 },
                 cursor,
                 inputLayer,
