@@ -23,5 +23,7 @@ The goal is to run the original osu!lazer client offline in a browser while reta
 - [x] JavaScript-to-.NET input bridge.
 - [x] GitHub Pages deployment from web-port.
 - [x] Initial BrowserGameHost single-frame pump entry point.
+- [x] Realm-free browser bootstrap backed by a versioned IndexedDB contract.
+- [x] Browser audio thread isolates native BASS device statistics.
 
 Online login, score submission and multiplayer remain out of scope until offline play works.
