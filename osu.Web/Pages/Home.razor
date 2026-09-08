@@ -80,7 +80,17 @@
             StateHasChanged();
             gameHost = new BrowserGameHost("osu-web");
             game = new BrowserBootstrapGame();
-            gameHost.Run(game);
+            // Framework threads install their own SynchronizationContext. Blazor must
+            // regain its context before awaiting JS interop or dispatching UI work.
+            var browserContext = System.Threading.SynchronizationContext.Current;
+            try
+            {
+                gameHost.Run(game);
+            }
+            finally
+            {
+                System.Threading.SynchronizationContext.SetSynchronizationContext(browserContext);
+            }
             gameStatus = "Framework diagnostic running — not OsuGame";
         }
         catch (Exception exception)
@@ -113,7 +123,22 @@
         {
             try
             {
-                gameHost.PumpFrame();
+                var browserContext = System.Threading.SynchronizationContext.Current;
+                bool accepted;
+                try
+                {
+                    accepted = gameHost.PumpFrame();
+                }
+                finally
+                {
+                    // Otherwise the interop continuation is queued on the draw
+                    // scheduler, but JS will not pump again until this call finishes.
+                    System.Threading.SynchronizationContext.SetSynchronizationContext(browserContext);
+                }
+
+                if (!accepted)
+                    throw new InvalidOperationException("Framework host did not accept the browser frame.");
+
                 var uploads = gameHost.GetBrowserTextureUploads();
                 float[] state = gameHost.GetBrowserFrameState();
                 if (module is not null)
@@ -165,3 +190,4 @@
         self?.Dispose();
     }
 }
+
