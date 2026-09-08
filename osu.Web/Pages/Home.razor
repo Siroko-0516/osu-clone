@@ -396,7 +396,15 @@
                 }
 
                 if (!accepted)
-                    throw new InvalidOperationException("Framework host did not accept the browser frame.");
+                {
+                    // External-loop hosts may need several browser turns to finish
+                    // startup. Keep queued input edges and retry on the next frame.
+                    gameStatus = "waiting for framework host startup";
+                    return;
+                }
+
+                if (gameStatus == "waiting for framework host startup")
+                    gameStatus = Original ? "Original OsuGame startup requested — gameplay unverified" : "Framework diagnostic running — not OsuGame";
 
                 var uploads = gameHost.GetBrowserTextureUploads();
                 float[] state = gameHost.GetBrowserFrameState();
