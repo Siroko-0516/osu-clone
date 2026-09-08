@@ -8,6 +8,7 @@ using osu.Game.Rulesets.Osu.Configuration;
 using osu.Game.Rulesets.Mania;
 using osu.Web.Storage;
 using osu.Framework.Input.Bindings;
+using System.IO.Compression;
 
 static class Program
 {
@@ -126,6 +127,29 @@ static class Program
         Check(restoredCatalogue.Sets.Single().Title == "title" && restoredCatalogue.GetBeatmaps(set.Id).Single(map => map.Id == "map-1").DifficultyName == "Normal",
             "Failed atomic beatmap import changed the active catalogue.");
         Console.WriteLine("PASS browser beatmap catalogue atomic import and restart hydration");
+
+        using var osz = new MemoryStream();
+        using (var zip = new ZipArchive(osz, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var map = zip.CreateEntry("Artist - Title (Mapper) [Hard].osu");
+            using (var writer = new StreamWriter(map.Open()))
+                writer.Write("osu file format v14\n[General]\nAudioFilename: audio.mp3\nMode: 3\n[Metadata]\nTitle:Title\nArtist:Artist\nCreator:Mapper\nVersion:Hard\nBeatmapID:456\nBeatmapSetID:123\n");
+            var audio = zip.CreateEntry("audio.mp3");
+            using (var audioStream = audio.Open())
+                audioStream.Write(new byte[] { 1, 2, 3 });
+        }
+        osz.Position = 0;
+        var imported = OszArchiveReader.Read(osz);
+        Check(imported.Set.Id == "123" && imported.Set.Title == "Title", ".osz set metadata was not parsed.");
+        Check(imported.Beatmaps.Single().Id == "456" && imported.Beatmaps.Single().RulesetId == 3, ".osz difficulty metadata was not parsed.");
+        Check(imported.Files.All(file => file.Path.StartsWith("beatmaps/123/", StringComparison.Ordinal)), ".osz resources escaped the set directory.");
+        using var unsafeOsz = new MemoryStream();
+        using (var zip = new ZipArchive(unsafeOsz, ZipArchiveMode.Create, leaveOpen: true))
+            zip.CreateEntry("../escape.osu");
+        unsafeOsz.Position = 0;
+        try { OszArchiveReader.Read(unsafeOsz); throw new Exception("Expected unsafe archive path rejection."); }
+        catch (InvalidDataException) { }
+        Console.WriteLine("PASS .osz metadata parsing, resource namespacing and traversal rejection");
     }
 }
 

@@ -7,6 +7,7 @@
 @using osu.Framework.Platform
 @using osu.Game.Rulesets.Osu.Configuration
 @using osu.Web.Storage
+@using Microsoft.AspNetCore.Components.Forms
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -65,6 +66,8 @@
     </section>
 
     <div>
+        <label class="file-import">Import beatmap (.osz) <InputFile OnChange="ImportBeatmap" accept=".osz,application/zip" disabled="@importingBeatmap" /></label>
+        <span>@beatmapImportStatus</span>
         <button @onclick="StartAudioTest">Play 5-second framework audio test</button>
         <button @onclick="() => game?.AudioTestTrack?.Stop()">Pause audio test</button>
         <button @onclick="() => game?.AudioTestTrack?.Seek(2000)">Seek audio test to 2 seconds</button>
@@ -136,6 +139,8 @@
     private string fileStatus = "Loading browser files";
     private osu.Game.Database.Persistence.BeatmapCatalogStore? beatmapCatalog;
     private string beatmapCatalogStatus = "Loading browser beatmap metadata";
+    private string beatmapImportStatus = "No beatmap imported";
+    private bool importingBeatmap;
     private bool bindingsSaving;
     private List<BindingEditorRow> bindingRows = new();
     private static readonly osu.Framework.Input.Bindings.InputKey[] selectableKeys = Enum.GetValues<osu.Framework.Input.Bindings.InputKey>()
@@ -347,6 +352,38 @@
         audioModule?.InvokeVoid("unlockAudio");
         game?.StartAudioTest();
         await FlushFiles();
+    }
+
+    private async Task ImportBeatmap(InputFileChangeEventArgs args)
+    {
+        if (beatmapCatalog is null || persistentStorage is null || fileStore is null)
+            return;
+
+        importingBeatmap = true;
+        beatmapImportStatus = $"Reading {args.File.Name}";
+        try
+        {
+            await using Stream stream = args.File.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024);
+            var package = osu.Game.Database.Persistence.OszArchiveReader.Read(stream);
+            foreach (var file in package.Files)
+            {
+                using Stream output = persistentStorage.GetStream(file.Path, FileAccess.Write, FileMode.Create);
+                await output.WriteAsync(file.Data);
+            }
+
+            await fileStore.FlushAsync(persistentStorage);
+            await beatmapCatalog.SaveSetAsync(package.Set, package.Beatmaps);
+            beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
+            beatmapImportStatus = $"Imported {package.Set.Artist} — {package.Set.Title} ({package.Beatmaps.Count} difficulties)";
+        }
+        catch (Exception exception)
+        {
+            beatmapImportStatus = "Import failed: " + exception.Message;
+        }
+        finally
+        {
+            importingBeatmap = false;
+        }
     }
 
     private async Task StartSampleTest()
