@@ -132,6 +132,7 @@
 
     private static string FormatException(Exception exception)
     {
+        Console.Error.WriteLine(exception);
         var messages = new List<string>();
 
         for (Exception? current = exception; current is not null; current = current.InnerException)
