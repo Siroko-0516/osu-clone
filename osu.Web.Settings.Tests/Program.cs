@@ -3,6 +3,7 @@ using osu.Game.Database.Persistence;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Configuration;
 using osu.Web.Storage;
+using osu.Framework.Input.Bindings;
 
 static void Check(bool condition, string message)
 {
@@ -50,6 +51,46 @@ try { await stale.FlushAsync(); throw new Exception("Expected revision conflict.
 catch (IOException) { }
 Check(JsonSerializer.Deserialize<Dictionary<string, string>>(records.Items["osu:1"].Payload)!["independent"] == "newer tab", "Stale tab overwrote committed settings.");
 Console.WriteLine("PASS stale writers cannot overwrite settings");
+
+var keys = await BrowserKeyBindingStore.CreateAsync(records);
+int notifications = 0;
+using var subscription = keys.Subscribe("osu", 0, () => notifications++);
+var mappings = new IKeyBinding[] { new KeyBinding(InputKey.A, OsuAction.LeftButton), new KeyBinding(InputKey.X, OsuAction.RightButton) };
+records.FailNext = true;
+try { await keys.SaveBindingsAsync("osu", 0, mappings); throw new Exception("Expected keymap commit failure."); }
+catch (IOException) { }
+Check(notifications == 0 && keys.GetBindings("osu", 0).Count == 0, "Failed keymap save changed active mappings.");
+await keys.SaveBindingsAsync("osu", 0, mappings);
+Check(notifications == 1, "Committed keymap change did not notify the input container.");
+keys.GetBindings("osu", 0)[0].KeyCombination = new KeyCombination(InputKey.None);
+Check(keys.GetBindings("osu", 0)[0].KeyCombination.Keys.Contains(InputKey.A), "Consumer mutation corrupted the stored keymap.");
+var restoredKeys = await BrowserKeyBindingStore.CreateAsync(records);
+Check(restoredKeys.GetBindings("osu", 0)[0].KeyCombination.Keys.Contains(InputKey.A), "Keymap did not restore.");
+Check(restoredKeys.GetBindings("osu", 1).Count == 0, "Keymap leaked between variants.");
+subscription.Dispose();
+await keys.SaveBindingsAsync("osu", 0, mappings);
+Check(notifications == 1, "Disposed subscriber still received keymap changes.");
+Console.WriteLine("PASS keymap persistence, commit notifications, snapshot isolation and unsubscription");
+
+using var mappingProbe = new MappingProbe();
+var filtered = mappingProbe.Apply(new IKeyBinding[]
+{
+    new KeyBinding(InputKey.MouseWheelUp, OsuAction.LeftButton),
+    new KeyBinding(InputKey.Z, OsuAction.LeftButton),
+    new KeyBinding(InputKey.Z, OsuAction.RightButton),
+});
+Check(filtered.Length == 2 && filtered.All(binding => binding.KeyCombination.Keys.Contains(InputKey.None)), "Original gameplay mapping safety rules were bypassed.");
+Console.WriteLine("PASS original gameplay duplicate and wheel-binding filters");
+
+sealed class MappingProbe : osu.Game.Rulesets.UI.RulesetInputManager<OsuAction>.RulesetKeyBindingContainer
+{
+    public MappingProbe() : base(new OsuRuleset().RulesetInfo, 0, SimultaneousBindingMode.Unique) { }
+    public IKeyBinding[] Apply(IEnumerable<IKeyBinding> bindings)
+    {
+        ReloadMappings(bindings);
+        return KeyBindings.ToArray();
+    }
+}
 
 sealed class MemoryRecords : IRecordStore
 {

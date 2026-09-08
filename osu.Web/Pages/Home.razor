@@ -42,6 +42,8 @@
         <button @onclick="() => game?.AudioTestTrack?.Stop()">Pause audio test</button>
         <button @onclick="() => game?.AudioTestTrack?.Seek(2000)">Seek audio test to 2 seconds</button>
         <button @onclick="StartSampleTest">Play 200-ms framework sample</button>
+        <button @onclick="() => SetActionKeys(true)">Use A / X for action test</button>
+        <button @onclick="() => SetActionKeys(false)">Restore Z / X action defaults</button>
     </div>
 
     <dl>
@@ -55,6 +57,7 @@
         <div><dt>Diagnostic frames</dt><dd>@gameFrameCount</dd></div>
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
         <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
+        <div><dt>Original osu! action test</dt><dd>@(game?.LastAction ?? "none") · @(game?.ActionPressCount ?? 0) pressed / @(game?.ActionReleaseCount ?? 0) released · @keyBindingStatus</dd></div>
         <div><dt>Framework audio position</dt><dd>@(game?.AudioTestTrack?.CurrentTime.ToString("0") ?? "0") ms</dd></div>
         <div><dt>Framework sample</dt><dd>@(game?.AudioTestSample?.Length.ToString("0") ?? "0") ms · @(game?.SamplePlayCount ?? 0) plays</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
@@ -84,10 +87,26 @@
     private string selectedMode = "osu";
     private bool gameFailed;
     private BrowserSettingsStore? settingsStore;
+    private BrowserKeyBindingStore? keyBindingStore;
+    private string keyBindingStatus = "Loading";
     private OsuRulesetConfigManager? osuConfig;
     private readonly List<IDisposable> rulesetConfigs = new();
     private bool settingsSaving;
     private string settingsStatus = "Loading browser settings";
+
+    private async Task SetActionKeys(bool useA)
+    {
+        if (keyBindingStore is null) return;
+        try
+        {
+            var ruleset = new OsuRuleset();
+            var bindings = ruleset.GetDefaultKeyBindings(0).Select(binding => (osu.Framework.Input.Bindings.IKeyBinding)new osu.Framework.Input.Bindings.KeyBinding(
+                new osu.Framework.Input.Bindings.KeyCombination(binding.KeyCombination.Keys.Select(key => useA && key == osu.Framework.Input.Bindings.InputKey.Z ? osu.Framework.Input.Bindings.InputKey.A : key).ToArray()), binding.Action));
+            await keyBindingStore.SaveBindingsAsync(ruleset.RulesetInfo.ShortName, 0, bindings);
+            keyBindingStatus = useA ? "A / X saved" : "Z / X defaults saved";
+        }
+        catch (Exception exception) { keyBindingStatus = "Save failed: " + exception.Message; }
+    }
 
     private async Task SetSnaking(ChangeEventArgs args)
     {
@@ -113,6 +132,8 @@
         try
         {
             settingsStore = await BrowserSettingsStore.CreateAsync(Records);
+            keyBindingStore = await BrowserKeyBindingStore.CreateAsync(Records);
+            keyBindingStatus = "Browser key bindings loaded";
             foreach (var ruleset in new osu.Game.Rulesets.Ruleset[] { new OsuRuleset(), new ManiaRuleset(), new TaikoRuleset() })
             {
                 var config = ruleset.CreateConfig(settingsStore);
@@ -143,7 +164,7 @@
             if (Original)
                 selectedGame = new OsuGame();
             else
-                selectedGame = game = new BrowserBootstrapGame();
+                selectedGame = game = new BrowserBootstrapGame(keyBindingStore);
             // Framework threads install their own SynchronizationContext. Blazor must
             // regain its context before awaiting JS interop or dispatching UI work.
             var browserContext = System.Threading.SynchronizationContext.Current;

@@ -27,8 +27,11 @@ namespace osu.Game.Input.Bindings
 
         private IDisposable realmSubscription;
 
-        [Resolved]
+        [Resolved(CanBeNull = true)]
         private RealmAccess realm { get; set; }
+
+        [Resolved(CanBeNull = true)]
+        private IKeyBindingSource bindingSource { get; set; }
 
         public override IEnumerable<IKeyBinding> DefaultKeyBindings => ruleset.CreateInstance().GetDefaultKeyBindings(variant ?? 0);
 
@@ -51,17 +54,24 @@ namespace osu.Game.Input.Bindings
 
         protected override void LoadComplete()
         {
-            realmSubscription = realm.RegisterForNotifications(queryRealmKeyBindings, (sender, _) =>
+            if (bindingSource != null)
+                realmSubscription = bindingSource.Subscribe(ruleset?.ShortName, variant, () => Schedule(ReloadMappings));
+            else
             {
-                // The first fire of this is a bit redundant as this is being called in base.LoadComplete,
-                // but this is safest in case the subscription is restored after a context recycle.
-                ReloadMappings(sender.AsQueryable());
-            });
+                if (realm == null) throw new InvalidOperationException("No key binding storage has been registered.");
+                realmSubscription = realm.RegisterForNotifications(queryRealmKeyBindings, (sender, _) => ReloadMappings(sender.AsQueryable()));
+            }
 
             base.LoadComplete();
         }
 
-        protected sealed override void ReloadMappings() => ReloadMappings(queryRealmKeyBindings(realm.Realm));
+        protected sealed override void ReloadMappings()
+        {
+            if (bindingSource != null)
+                ReloadMappings(bindingSource.GetBindings(ruleset?.ShortName, variant));
+            else
+                ReloadMappings(queryRealmKeyBindings(realm.Realm));
+        }
 
         private IQueryable<RealmKeyBinding> queryRealmKeyBindings(Realm realm)
         {
@@ -71,14 +81,17 @@ namespace osu.Game.Input.Bindings
         }
 
         protected virtual void ReloadMappings(IQueryable<RealmKeyBinding> realmKeyBindings)
+            => ReloadMappings(realmKeyBindings.AsEnumerable().Detach().Cast<IKeyBinding>());
+
+        protected virtual void ReloadMappings(IEnumerable<IKeyBinding> bindings)
         {
             var defaults = DefaultKeyBindings.ToList();
 
-            List<RealmKeyBinding> newBindings = realmKeyBindings.AsEnumerable().Detach()
+            List<IKeyBinding> newBindings = bindings
                                                                 // this ordering is important to ensure that we read entries from the database in the order
                                                                 // enforced by DefaultKeyBindings. allow for song select to handle actions that may otherwise
                                                                 // have been eaten by the music controller due to query order.
-                                                                .OrderBy(b => defaults.FindIndex(d => (int)d.Action == b.ActionInt)).ToList();
+                                                                .OrderBy(b => defaults.FindIndex(d => (int)d.Action == Convert.ToInt32(b.Action))).ToList();
 
             // In the case no bindings were found in the database, presume this usage is for a non-databased ruleset.
             // This actually should never be required and can be removed if it is ever deemed to cause a problem.

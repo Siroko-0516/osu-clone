@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="../osu.Game.Rulesets.Osu/osu.Game.Rulesets.Osu.csproj" />
     <Compile Include="../osu.Web/Storage/BrowserSettingsStore.cs" Link="BrowserSettingsStore.cs" />
+    <Compile Include="../osu.Web/Storage/BrowserKeyBindingStore.cs" Link="BrowserKeyBindingStore.cs" />
   </ItemGroup>
 </Project>

@@ -8,6 +8,10 @@ using osu.Framework.Input.Events;
 using osu.Framework.Audio.Track;
 using osu.Framework.Audio.Sample;
 using osu.Framework.IO.Stores;
+using osu.Framework.Input.Bindings;
+using osu.Game.Input.Bindings;
+using osu.Game.Rulesets.Osu;
+using osu.Game.Rulesets.UI;
 using osuTK.Graphics;
 
 namespace osu.Web
@@ -18,6 +22,30 @@ namespace osu.Web
     /// </summary>
     public sealed class BrowserBootstrapGame : osu.Framework.Game
     {
+        private readonly IKeyBindingSource bindingSource;
+        public long ActionPressCount { get; private set; }
+        public long ActionReleaseCount { get; private set; }
+        public string LastAction { get; private set; } = "none";
+
+        public BrowserBootstrapGame(IKeyBindingSource bindingSource) => this.bindingSource = bindingSource;
+
+        protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
+        {
+            var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
+            dependencies.CacheAs(bindingSource);
+            return dependencies;
+        }
+
+        private sealed class ActionProbe(BrowserBootstrapGame game) : Drawable, IKeyBindingHandler<OsuAction>
+        {
+            public bool OnPressed(KeyBindingPressEvent<OsuAction> e)
+            {
+                game.ActionPressCount++;
+                game.LastAction = e.Action.ToString();
+                return true;
+            }
+            public void OnReleased(KeyBindingReleaseEvent<OsuAction> e) => game.ActionReleaseCount++;
+        }
         public long ProcessedInputEvents { get; private set; }
         private readonly Box cursor = new Box { Size = new osuTK.Vector2(16), Colour = Color4.Cyan, Depth = -1 };
         public Track? AudioTestTrack { get; private set; }
@@ -116,6 +144,11 @@ namespace osu.Web
                     Colour = new Color4(236, 52, 123, 255),
                 },
                 cursor,
+                new RulesetInputManager<OsuAction>.RulesetKeyBindingContainer(new OsuRuleset().RulesetInfo, 0, SimultaneousBindingMode.Unique)
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Child = new ActionProbe(this) { RelativeSizeAxes = Axes.Both },
+                },
             };
         }
     }
