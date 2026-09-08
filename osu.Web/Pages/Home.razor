@@ -49,7 +49,7 @@
     private IJSObjectReference? module;
     private DotNetObjectReference<Home>? self;
     private BrowserGameHost? gameHost;
-    private OsuGame? game;
+    private BrowserBootstrapGame? game;
     private long gameFrameCount;
     private string rendererStatus = "initialising";
     private string gameStatus = "waiting";
@@ -71,9 +71,9 @@
             gameStatus = "initialising BrowserGameHost";
             StateHasChanged();
             gameHost = new BrowserGameHost("osu-web");
-            game = new OsuGame(Array.Empty<string>());
+            game = new BrowserBootstrapGame();
             gameHost.Run(game);
-            gameStatus = "OsuGame running";
+            gameStatus = "Browser runtime running · osu! services migrating";
         }
         catch (Exception exception)
         {
