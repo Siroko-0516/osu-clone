@@ -6,7 +6,6 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.Textures;
 using osu.Framework.Input.Events;
 using osu.Framework.Audio.Track;
 using osu.Framework.Audio.Sample;
@@ -155,7 +154,7 @@ namespace osu.Web
         }
 
         [BackgroundDependencyLoader]
-        private void load(TextureStore textures)
+        private void load()
         {
             // Exercise the real osu! resource and texture pipeline here. This is the
             // original embedded logo asset, not a web-side copy or replacement image.
@@ -173,7 +172,7 @@ namespace osu.Web
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     Size = new osuTK.Vector2(320),
-                    Texture = textures.Get(@"Menu/logo"),
+                    Texture = Textures.Get(@"Menu/logo"),
                 },
                 cursor,
                 inputLayer,
