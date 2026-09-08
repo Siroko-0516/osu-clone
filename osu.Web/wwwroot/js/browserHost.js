@@ -3,6 +3,8 @@ let canvas;
 let gl;
 let dotnet;
 let program;
+let frameworkProgram;
+let frameworkBuffer;
 let frame = 0;
 let pumpPending = false;
 let pointer = { x: 0, y: 0, down: false };
@@ -10,6 +12,14 @@ const keys = new Set();
 let ruleset = "osu";
 let frameworkFrame;
 const listeners = [];
+let lastPointerReport = 0;
+
+const rulesetKeys = {
+    osu: new Set(["KeyZ", "KeyX"]),
+    mania: new Set(["KeyD", "KeyF", "KeyJ", "KeyK"]),
+    taiko: new Set(["KeyZ", "KeyX", "KeyC", "KeyV"]),
+    catch: new Set(["ArrowLeft", "ArrowRight"])
+};
 
 const vertexSource = `#version 300 es
 in vec2 a_position;
@@ -45,6 +55,23 @@ void main() {
     colour = vec4(mix(background, mix(cursorColour, vec3(1.0), rim), disc), 1.0);
 }`;
 
+const frameworkVertexSource = `#version 300 es
+in vec2 a_position;
+in vec4 a_colour;
+uniform vec2 u_viewport;
+out vec4 v_colour;
+void main() {
+    vec2 clip = (a_position / u_viewport) * 2.0 - 1.0;
+    gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+    v_colour = a_colour;
+}`;
+
+const frameworkFragmentSource = `#version 300 es
+precision highp float;
+in vec4 v_colour;
+out vec4 colour;
+void main() { colour = v_colour; }`;
+
 function listen(target, event, handler, options) {
     target.addEventListener(event, handler, options);
     listeners.push(() => target.removeEventListener(event, handler, options));
@@ -69,6 +96,48 @@ function createProgram() {
     return result;
 }
 
+function createFrameworkProgram() {
+    const result = gl.createProgram();
+    gl.attachShader(result, shader(gl.VERTEX_SHADER, frameworkVertexSource));
+    gl.attachShader(result, shader(gl.FRAGMENT_SHADER, frameworkFragmentSource));
+    gl.linkProgram(result);
+    if (!gl.getProgramParameter(result, gl.LINK_STATUS))
+        throw new Error(gl.getProgramInfoLog(result));
+    return result;
+}
+
+function drawFrameworkFrame(state) {
+    const viewportWidth = state[6] > 0 ? state[6] : canvas.width;
+    const viewportHeight = state[7] > 0 ? state[7] : canvas.height;
+    const source = state.slice(8);
+    const triangles = [];
+
+    // osu!framework's quad batches contain four vertices in BL, BR, TR, TL order.
+    // Expand them into WebGL triangles while the native indexed batch is being ported.
+    for (let offset = 0; offset + 23 < source.length; offset += 24) {
+        for (const vertex of [0, 1, 2, 2, 3, 0]) {
+            const start = offset + vertex * 6;
+            triangles.push(...source.slice(start, start + 6));
+        }
+    }
+
+    if (triangles.length === 0)
+        return;
+
+    gl.useProgram(frameworkProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangles), gl.DYNAMIC_DRAW);
+
+    const position = gl.getAttribLocation(frameworkProgram, "a_position");
+    const colour = gl.getAttribLocation(frameworkProgram, "a_colour");
+    gl.enableVertexAttribArray(position);
+    gl.enableVertexAttribArray(colour);
+    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(colour, 4, gl.FLOAT, false, 24, 8);
+    gl.uniform2f(gl.getUniformLocation(frameworkProgram, "u_viewport"), viewportWidth, viewportHeight);
+    gl.drawArrays(gl.TRIANGLES, 0, triangles.length / 6);
+}
+
 export async function startBrowserHost(target, dotnetReference) {
     canvas = target;
     dotnet = dotnetReference;
@@ -80,6 +149,8 @@ export async function startBrowserHost(target, dotnetReference) {
     }
 
     program = createProgram();
+    frameworkProgram = createFrameworkProgram();
+    frameworkBuffer = gl.createBuffer();
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
@@ -111,21 +182,46 @@ export async function startBrowserHost(target, dotnetReference) {
         pointer.y = (event.clientY - rect.top) * ratio;
     };
 
-    listen(canvas, "pointermove", position);
+    listen(canvas, "pointermove", event => {
+        event.preventDefault();
+        position(event);
+
+        // Keep the diagnostic text responsive without flooding the .NET bridge.
+        const now = performance.now();
+        if (now - lastPointerReport >= 50) {
+            lastPointerReport = now;
+            dotnet.invokeMethodAsync("ReportInput", pointer.down ? "pointer drag" : "pointer move", pointer.x, pointer.y);
+        }
+    }, { passive: false });
     listen(canvas, "pointerdown", event => {
+        event.preventDefault();
         position(event);
         pointer.down = true;
+        canvas.setPointerCapture?.(event.pointerId);
         canvas.focus();
         dotnet.invokeMethodAsync("ReportInput", "pointer down", pointer.x, pointer.y);
+    }, { passive: false });
+    listen(window, "pointerup", event => {
+        position(event);
+        pointer.down = false;
+        dotnet.invokeMethodAsync("ReportInput", "pointer up", pointer.x, pointer.y);
     });
-    listen(window, "pointerup", () => pointer.down = false);
+    listen(window, "pointercancel", () => {
+        pointer.down = false;
+        dotnet.invokeMethodAsync("ReportInput", "pointer cancel", pointer.x, pointer.y);
+    });
     listen(canvas, "keydown", event => {
-        if (!["KeyZ", "KeyX", "KeyD", "KeyF", "KeyJ", "KeyK", "ArrowLeft", "ArrowRight"].includes(event.code)) return;
+        if (!rulesetKeys[ruleset]?.has(event.code)) return;
         event.preventDefault();
+        if (event.repeat) return;
         keys.add(event.code);
-        dotnet.invokeMethodAsync("ReportInput", event.code, pointer.x, pointer.y);
+        dotnet.invokeMethodAsync("ReportInput", `${event.code} down`, pointer.x, pointer.y);
     });
-    listen(canvas, "keyup", event => keys.delete(event.code));
+    listen(canvas, "keyup", event => {
+        if (!keys.delete(event.code)) return;
+        event.preventDefault();
+        dotnet.invokeMethodAsync("ReportInput", `${event.code} up`, pointer.x, pointer.y);
+    });
     listen(window, "resize", resize);
     listen(canvas, "webglcontextlost", event => {
         event.preventDefault();
@@ -138,11 +234,19 @@ export async function startBrowserHost(target, dotnetReference) {
     await dotnet.invokeMethodAsync("ReportRenderer", `WebGL2 · ${gl.getParameter(gl.RENDERER)}`);
 
     const render = time => {
-        if (frameworkFrame) {
+        // The first framework frames may contain only the clear colour and viewport
+        // while the scene graph is still loading. Keep the diagnostic surface visible
+        // until drawable geometry is actually available instead of showing a black box.
+        if (frameworkFrame?.length > 8) {
             const [r, g, b, a] = frameworkFrame;
             gl.clearColor(r, g, b, a);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+            drawFrameworkFrame(frameworkFrame);
         } else {
+            gl.useProgram(program);
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
             gl.uniform2f(uniforms.resolution, canvas.width, canvas.height);
             gl.uniform2f(uniforms.pointer, pointer.x, pointer.y);
             gl.uniform1f(uniforms.time, time / 1000);
@@ -169,10 +273,13 @@ export function stopBrowserHost() {
     pumpPending = false;
     dotnet = undefined;
     gl = undefined;
+    frameworkProgram = undefined;
+    frameworkBuffer = undefined;
 }
 
 export function setRuleset(mode) {
     ruleset = mode;
+    keys.clear();
     if (dotnet) dotnet.invokeMethodAsync("ReportInput", `ruleset ${mode}`, pointer.x, pointer.y);
 }
 
