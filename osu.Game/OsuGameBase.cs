@@ -162,7 +162,7 @@ namespace osu.Game
 
         protected SkinManager SkinManager { get; private set; }
 
-        protected RealmRulesetStore RulesetStore { get; private set; }
+        protected RulesetStore RulesetStore { get; private set; }
 
         protected RealmKeyBindingStore KeyBindingStore { get; private set; }
 
