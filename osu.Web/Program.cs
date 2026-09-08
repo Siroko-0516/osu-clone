@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using osu.Web;
-using osu.Game.Database.Storage;
+using osu.Game.Database.Persistence;
 using osu.Web.Storage;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
