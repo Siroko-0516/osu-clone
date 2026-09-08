@@ -3,30 +3,20 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
-using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
-using osu.Framework.Graphics.Sprites;
-using osu.Framework.Graphics.Textures;
-using osu.Framework.IO.Stores;
-using osu.Game.Graphics;
-using osu.Game.Graphics.Sprites;
-using osu.Game.Resources;
-using osuTK;
 using osuTK.Graphics;
 
 namespace osu.Web
 {
     /// <summary>
-    /// Browser-safe original UI scene used while persistent osu! services are migrated to IndexedDB.
-    /// It deliberately loads UI assets without constructing Realm-backed gameplay services.
+    /// Realm-free diagnostic runtime used only while the real OsuGame services are ported.
+    /// This must never be presented as the original osu! user interface.
     /// </summary>
     public sealed class BrowserBootstrapGame : osu.Framework.Game
     {
         [BackgroundDependencyLoader]
-        private void load(TextureStore textures)
+        private void load()
         {
-            Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
-
             Children = new Drawable[]
             {
                 new Box
@@ -34,31 +24,12 @@ namespace osu.Web
                     RelativeSizeAxes = Axes.Both,
                     Colour = new Color4(18, 12, 24, 255),
                 },
-                new FillFlowContainer
+                new Box
                 {
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
-                    AutoSizeAxes = Axes.Both,
-                    Direction = FillDirection.Vertical,
-                    Spacing = new Vector2(12),
-                    Children = new Drawable[]
-                    {
-                        new Sprite
-                        {
-                            Anchor = Anchor.TopCentre,
-                            Origin = Anchor.TopCentre,
-                            Texture = textures.Get(@"Menu/logo"),
-                            Scale = new Vector2(0.72f),
-                        },
-                        new OsuSpriteText
-                        {
-                            Anchor = Anchor.TopCentre,
-                            Origin = Anchor.TopCentre,
-                            Text = "click to start",
-                            Font = OsuFont.GetFont(size: 22, weight: FontWeight.Regular),
-                            Colour = Color4.White,
-                        },
-                    },
+                    Size = new osuTK.Vector2(360, 120),
+                    Colour = new Color4(236, 52, 123, 255),
                 },
             };
         }
