@@ -177,7 +177,7 @@ export async function startBrowserHost(target, dotnetReference) {
 
     if (!gl) {
         await dotnet.invokeMethodAsync("ReportRenderer", "WebGL2 unavailable");
-        return;
+        return false;
     }
 
     program = createProgram();
@@ -185,6 +185,8 @@ export async function startBrowserHost(target, dotnetReference) {
     frameworkBuffer = gl.createBuffer();
     fallbackTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, fallbackTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -317,6 +319,7 @@ export async function startBrowserHost(target, dotnetReference) {
         animationFrame = requestAnimationFrame(render);
     };
     animationFrame = requestAnimationFrame(render);
+    return true;
 }
 
 export function stopBrowserHost() {
@@ -345,6 +348,7 @@ export function applyFrameworkFrame(state) {
 }
 
 export function applyTextureUploads(uploads) {
+    if (!gl) return;
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
@@ -365,6 +369,11 @@ export function applyTextureUploads(uploads) {
         }
 
         const y = upload.textureHeight - upload.y - upload.height;
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, upload.x, y, upload.width, upload.height, gl.RGBA, gl.UNSIGNED_BYTE, upload.data);
+        // Blazor serialises nested byte arrays as base64 strings. WebGL requires
+        // an ArrayBufferView, not a string or a plain JavaScript array.
+        const pixels = typeof upload.data === "string"
+            ? Uint8Array.from(atob(upload.data), character => character.charCodeAt(0))
+            : new Uint8Array(upload.data);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, upload.x, y, upload.width, upload.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     }
 }
