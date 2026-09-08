@@ -6,6 +6,7 @@ on:
       - 'osu.Web/**'
       - 'osu.Web.Probe/**'
       - 'osu.Web.Storage.Tests/**'
+      - 'osu.Web.Settings.Tests/**'
       - 'osu.Game/**'
       - 'WEB_PORTING.md'
       - '.github/workflows/web-port.yml'
@@ -46,7 +47,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Siroko-0516/osu-framework-clone
-          ref: web-port
+          # Keep the game and framework pair reproducible while both ports evolve.
+          ref: baed90d5c20893e70c93689a78cca03852d36b9f
           path: osu-framework-clone
 
       - uses: actions/setup-dotnet@v4
@@ -59,6 +61,11 @@ jobs:
 
       - name: Build osu.Game against browser framework
         run: dotnet build osu.Web.Probe/osu.Web.Probe.csproj -c Release -p:OsuBrowserBuild=true -p:WasmBuildNative=false
+
+      - name: Verify original ruleset settings without Realm
+        run: |
+          dotnet build osu.Web.Settings.Tests/osu.Web.Settings.Tests.csproj -c Release -p:OsuBrowserBuild=true -p:WasmBuildNative=false
+          dotnet osu.Web.Settings.Tests/bin/Release/net8.0/osu.Web.Settings.Tests.dll
 
       - name: Publish interpreted WebAssembly host
         run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true -p:WasmBuildNative=false

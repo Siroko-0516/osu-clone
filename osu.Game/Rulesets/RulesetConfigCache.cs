@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
@@ -13,22 +13,25 @@ namespace osu.Game.Rulesets
 {
     public partial class RulesetConfigCache : Component, IRulesetConfigCache
     {
-        private readonly RealmAccess realm;
+        private readonly SettingsStore settingsStore;
         private readonly RulesetStore rulesets;
 
         private readonly Dictionary<string, IRulesetConfigManager?> configCache = new Dictionary<string, IRulesetConfigManager?>();
 
         public RulesetConfigCache(RealmAccess realm, RulesetStore rulesets)
+            : this(rulesets, new SettingsStore(realm))
         {
-            this.realm = realm;
+        }
+
+        public RulesetConfigCache(RulesetStore rulesets, SettingsStore settingsStore)
+        {
+            this.settingsStore = settingsStore;
             this.rulesets = rulesets;
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
-
-            var settingsStore = new SettingsStore(realm);
 
             // let's keep things simple for now and just retrieve all the required configs at startup..
             foreach (var ruleset in rulesets.AvailableRulesets)

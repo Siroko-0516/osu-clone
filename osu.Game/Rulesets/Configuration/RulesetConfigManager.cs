@@ -1,4 +1,4 @@
-﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
+// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
 #nullable disable
@@ -11,24 +11,23 @@ using osu.Framework.Bindables;
 using osu.Framework.Configuration;
 using osu.Framework.Extensions;
 using osu.Game.Configuration;
-using osu.Game.Database;
 
 namespace osu.Game.Rulesets.Configuration
 {
     public abstract class RulesetConfigManager<TLookup> : ConfigManager<TLookup>, IRulesetConfigManager
         where TLookup : struct, Enum
     {
-        private readonly RealmAccess realm;
+        private readonly SettingsStore store;
 
         private readonly int variant;
 
-        private List<RealmRulesetSetting> databasedSettings = new List<RealmRulesetSetting>();
+        private Dictionary<string, string> databasedSettings = new Dictionary<string, string>();
 
         private readonly string rulesetName;
 
         protected RulesetConfigManager(SettingsStore store, RulesetInfo ruleset, int? variant = null)
         {
-            realm = store?.Realm;
+            this.store = store;
 
             rulesetName = ruleset.ShortName;
 
@@ -41,11 +40,7 @@ namespace osu.Game.Rulesets.Configuration
 
         protected override void PerformLoad()
         {
-            if (realm != null)
-            {
-                // As long as RulesetConfigCache exists, there is no need to subscribe to realm events.
-                databasedSettings = realm.Realm.All<RealmRulesetSetting>().Where(b => b.RulesetName == rulesetName && b.Variant == variant).ToList();
-            }
+            databasedSettings = store?.ReadSettings(rulesetName, variant) ?? new Dictionary<string, string>();
         }
 
         private readonly HashSet<TLookup> pendingWrites = new HashSet<TLookup>();
@@ -63,15 +58,16 @@ namespace osu.Game.Rulesets.Configuration
             if (!changed.Any())
                 return true;
 
-            realm?.Write(r =>
+            try
             {
-                foreach (var c in changed)
-                {
-                    var setting = r.All<RealmRulesetSetting>().First(s => s.RulesetName == rulesetName && s.Variant == variant && s.Key == c.ToString());
-
-                    setting.Value = ConfigStore[c].ToString(CultureInfo.InvariantCulture);
-                }
-            });
+                store?.WriteSettings(rulesetName, variant, changed.ToDictionary(c => c.ToString(), c => ConfigStore[c].ToString(CultureInfo.InvariantCulture)));
+            }
+            catch
+            {
+                lock (pendingWrites)
+                    pendingWrites.UnionWith(changed);
+                throw;
+            }
 
             return true;
         }
@@ -80,25 +76,15 @@ namespace osu.Game.Rulesets.Configuration
         {
             base.AddBindable(lookup, bindable);
 
-            var setting = databasedSettings.Find(s => s.Key == lookup.ToString());
-
-            if (setting != null)
+            if (databasedSettings.TryGetValue(lookup.ToString(), out var value))
             {
-                bindable.Parse(setting.Value, CultureInfo.InvariantCulture);
+                bindable.Parse(value, CultureInfo.InvariantCulture);
             }
             else
             {
-                setting = new RealmRulesetSetting
-                {
-                    Key = lookup.ToString(),
-                    Value = bindable.ToString(CultureInfo.InvariantCulture),
-                    RulesetName = rulesetName,
-                    Variant = variant,
-                };
-
-                realm?.Realm.Write(() => realm.Realm.Add(setting));
-
-                databasedSettings.Add(setting);
+                value = bindable.ToString(CultureInfo.InvariantCulture);
+                store?.WriteSettings(rulesetName, variant, new Dictionary<string, string> { [lookup.ToString()] = value });
+                databasedSettings.Add(lookup.ToString(), value);
             }
 
             bindable.ValueChanged += _ =>

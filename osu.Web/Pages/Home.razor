@@ -5,9 +5,12 @@
 @using osu.Game.Rulesets.Taiko
 @using osu.Game.Rulesets.Catch
 @using osu.Framework.Platform
+@using osu.Game.Rulesets.Osu.Configuration
+@using osu.Web.Storage
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject osu.Game.Database.Persistence.IRecordStore Records
 
 <PageTitle>osu! web port laboratory</PageTitle>
 
@@ -42,6 +45,10 @@
     </div>
 
     <dl>
+        <div><dt>Original ruleset settings test</dt><dd>
+            <label><input type="checkbox" disabled="@(osuConfig is null || settingsSaving)" checked="@(osuConfig?.Get<bool>(OsuRulesetSetting.SnakingInSliders) ?? true)" @onchange="SetSnaking" /> Snaking-in sliders</label>
+            <span>@settingsStatus</span>
+        </dd></div>
         <div><dt>Original game</dt><dd>@(Original ? "Startup requested — see runtime status; gameplay unverified" : "Not started — native services still require porting")</dd></div>
         <div><dt>Diagnostic runtime</dt><dd>@gameStatus</dd></div>
         <div><dt>GPU renderer</dt><dd>@rendererStatus</dd></div>
@@ -76,6 +83,27 @@
     private string inputStatus = "waiting";
     private string selectedMode = "osu";
     private bool gameFailed;
+    private BrowserSettingsStore? settingsStore;
+    private OsuRulesetConfigManager? osuConfig;
+    private readonly List<IDisposable> rulesetConfigs = new();
+    private bool settingsSaving;
+    private string settingsStatus = "Loading browser settings";
+
+    private async Task SetSnaking(ChangeEventArgs args)
+    {
+        if (osuConfig is null || settingsStore is null) return;
+        settingsSaving = true;
+        settingsStatus = "Saving";
+        try
+        {
+            osuConfig.SetValue(OsuRulesetSetting.SnakingInSliders, args.Value is true);
+            osuConfig.Save();
+            await settingsStore.FlushAsync();
+            settingsStatus = "Saved to browser";
+        }
+        catch (Exception exception) { settingsStatus = "Save failed: " + exception.Message; }
+        finally { settingsSaving = false; }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -84,6 +112,15 @@
 
         try
         {
+            settingsStore = await BrowserSettingsStore.CreateAsync(Records);
+            foreach (var ruleset in new osu.Game.Rulesets.Ruleset[] { new OsuRuleset(), new ManiaRuleset(), new TaikoRuleset() })
+            {
+                var config = ruleset.CreateConfig(settingsStore);
+                if (config is not null) rulesetConfigs.Add(config);
+                if (config is OsuRulesetConfigManager standardConfig) osuConfig = standardConfig;
+            }
+            await settingsStore.FlushAsync();
+            settingsStatus = "Original osu!, mania and taiko settings loaded";
             audioModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserAudio.mjs");
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
@@ -226,6 +263,13 @@
 
     public async ValueTask DisposeAsync()
     {
+        foreach (var config in rulesetConfigs) config.Dispose();
+        if (settingsStore is not null)
+        {
+            try { await settingsStore.FlushAsync(); }
+            catch (Exception exception) { Console.Error.WriteLine("Settings commit failed during shutdown: " + exception); }
+        }
+
         if (module is not null)
         {
             await module.InvokeVoidAsync("stopBrowserHost");
@@ -247,4 +291,3 @@
         }
     }
 }
-
