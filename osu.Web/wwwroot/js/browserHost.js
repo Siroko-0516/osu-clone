@@ -13,6 +13,7 @@ let ruleset = "osu";
 let frameworkFrame;
 const listeners = [];
 let lastPointerReport = 0;
+let lastKeyboardState = "";
 
 const rulesetKeys = {
     osu: new Set(["KeyZ", "KeyX"]),
@@ -20,6 +21,25 @@ const rulesetKeys = {
     taiko: new Set(["KeyZ", "KeyX", "KeyC", "KeyV"]),
     catch: new Set(["ArrowLeft", "ArrowRight"])
 };
+
+function reportKeyboardState(action) {
+    const active = [...keys].sort().join(" + ") || "none";
+    const state = `${action} · held: ${active}`;
+
+    if (state === lastKeyboardState || !dotnet)
+        return;
+
+    lastKeyboardState = state;
+    dotnet.invokeMethodAsync("ReportInput", state, pointer.x, pointer.y);
+}
+
+function releaseAllKeys(action = "keyboard reset") {
+    if (keys.size === 0)
+        return;
+
+    keys.clear();
+    reportKeyboardState(action);
+}
 
 const vertexSource = `#version 300 es
 in vec2 a_position;
@@ -210,17 +230,23 @@ export async function startBrowserHost(target, dotnetReference) {
         pointer.down = false;
         dotnet.invokeMethodAsync("ReportInput", "pointer cancel", pointer.x, pointer.y);
     });
-    listen(canvas, "keydown", event => {
+    // Track physical key state ourselves. Browser key-repeat has a platform-defined delay
+    // and is unsuitable for rhythm input; a Set also preserves simultaneous key presses.
+    listen(window, "keydown", event => {
         if (!rulesetKeys[ruleset]?.has(event.code)) return;
         event.preventDefault();
-        if (event.repeat) return;
+        if (event.repeat || keys.has(event.code)) return;
         keys.add(event.code);
-        dotnet.invokeMethodAsync("ReportInput", `${event.code} down`, pointer.x, pointer.y);
-    });
-    listen(canvas, "keyup", event => {
+        reportKeyboardState(`${event.code} down`);
+    }, { capture: true });
+    listen(window, "keyup", event => {
         if (!keys.delete(event.code)) return;
         event.preventDefault();
-        dotnet.invokeMethodAsync("ReportInput", `${event.code} up`, pointer.x, pointer.y);
+        reportKeyboardState(`${event.code} up`);
+    }, { capture: true });
+    listen(window, "blur", () => releaseAllKeys());
+    listen(document, "visibilitychange", () => {
+        if (document.hidden) releaseAllKeys();
     });
     listen(window, "resize", resize);
     listen(canvas, "webglcontextlost", event => {
@@ -279,7 +305,7 @@ export function stopBrowserHost() {
 
 export function setRuleset(mode) {
     ruleset = mode;
-    keys.clear();
+    releaseAllKeys("ruleset changed");
     if (dotnet) dotnet.invokeMethodAsync("ReportInput", `ruleset ${mode}`, pointer.x, pointer.y);
 }
 
