@@ -38,6 +38,7 @@
         <div><dt>GPU renderer</dt><dd>@rendererStatus</dd></div>
         <div><dt>Diagnostic frames</dt><dd>@gameFrameCount</dd></div>
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
+        <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
         <div><dt>mania</dt><dd>@typeof(ManiaRuleset).Assembly.GetName().Name</dd></div>
         <div><dt>taiko</dt><dd>@typeof(TaikoRuleset).Assembly.GetName().Name</dd></div>
@@ -49,7 +50,7 @@
     private ElementReference canvas;
     private IJSObjectReference? module;
     private DotNetObjectReference<Home>? self;
-    private BrowserGameHost? gameHost;
+    private WebGameHost? gameHost;
     private BrowserBootstrapGame? game;
     private long gameFrameCount;
     private string rendererStatus = "initialising";
@@ -65,7 +66,7 @@
 
         try
         {
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=2-textures");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=3-input");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
@@ -78,7 +79,7 @@
 
             gameStatus = "initialising BrowserGameHost";
             StateHasChanged();
-            gameHost = new BrowserGameHost("osu-web");
+            gameHost = new WebGameHost("osu-web");
             game = new BrowserBootstrapGame();
             // Framework threads install their own SynchronizationContext. Blazor must
             // regain its context before awaiting JS interop or dispatching UI work.
@@ -117,12 +118,16 @@
     }
 
     [JSInvokable]
-    public async Task PumpGameFrame(long frame)
+    public async Task PumpGameFrame(long frame, BrowserInputEvent[] inputs, int width, int height)
     {
         if (!gameFailed && gameHost is not null)
         {
             try
             {
+                gameHost.Resize(width, height);
+                foreach (var input in inputs)
+                    gameHost.BrowserInput.Receive(input);
+
                 var browserContext = System.Threading.SynchronizationContext.Current;
                 bool accepted;
                 try
@@ -144,7 +149,9 @@
                 if (module is not null)
                 {
                     if (uploads.Length > 0)
-                        await module.InvokeVoidAsync("applyTextureUploads", uploads);
+                        // Keep the reference-type array as one JS argument; otherwise
+                        // params object[] expands it into individual upload arguments.
+                        await module.InvokeVoidAsync("applyTextureUploads", (object)uploads);
 
                     await module.InvokeVoidAsync("applyFrameworkFrame", state);
                 }
@@ -190,4 +197,3 @@
         self?.Dispose();
     }
 }
-

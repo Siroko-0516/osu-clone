@@ -1,3 +1,6 @@
+import { attachBrowserInput } from './browserInput.mjs';
+
+let inputBridge;
 let animationFrame;
 let canvas;
 let gl;
@@ -261,7 +264,7 @@ export async function startBrowserHost(target, dotnetReference) {
     });
     // Track physical key state ourselves. Browser key-repeat has a platform-defined delay
     // and is unsuitable for rhythm input; a Set also preserves simultaneous key presses.
-    listen(window, "keydown", event => {
+    listen(canvas, "keydown", event => {
         if (!rulesetKeys[ruleset]?.has(event.code)) return;
         event.preventDefault();
         if (event.repeat || keys.has(event.code)) return;
@@ -284,6 +287,7 @@ export async function startBrowserHost(target, dotnetReference) {
     });
 
     resize();
+    inputBridge = attachBrowserInput(canvas);
     pointer.x = canvas.width / 2;
     pointer.y = canvas.height / 2;
     await dotnet.invokeMethodAsync("ReportRenderer", `WebGL2 · ${gl.getParameter(gl.RENDERER)}`);
@@ -313,7 +317,7 @@ export async function startBrowserHost(target, dotnetReference) {
         frame++;
         if (!pumpPending) {
             pumpPending = true;
-            dotnet.invokeMethodAsync("PumpGameFrame", frame)
+            dotnet.invokeMethodAsync("PumpGameFrame", frame, inputBridge.drain(), canvas.width, canvas.height)
                 .finally(() => pumpPending = false);
         }
         animationFrame = requestAnimationFrame(render);
@@ -323,6 +327,8 @@ export async function startBrowserHost(target, dotnetReference) {
 }
 
 export function stopBrowserHost() {
+    inputBridge?.dispose();
+    inputBridge = undefined;
     if (animationFrame) cancelAnimationFrame(animationFrame);
     for (const remove of listeners.splice(0)) remove();
     animationFrame = undefined;
@@ -338,6 +344,7 @@ export function stopBrowserHost() {
 }
 
 export function setRuleset(mode) {
+    inputBridge?.reset();
     ruleset = mode;
     releaseAllKeys("ruleset changed");
     if (dotnet) dotnet.invokeMethodAsync("ReportInput", `ruleset ${mode}`, pointer.x, pointer.y);
@@ -350,7 +357,9 @@ export function applyFrameworkFrame(state) {
 export function applyTextureUploads(uploads) {
     if (!gl) return;
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    // BrowserRenderer reports top-left UVs. Typed-array uploads keep row zero at
+    // texture coordinate zero, so atlas regions must retain their original Y.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 
     for (const upload of uploads) {
         let entry = frameworkTextures.get(upload.textureId);
@@ -368,7 +377,7 @@ export function applyTextureUploads(uploads) {
             gl.bindTexture(gl.TEXTURE_2D, entry);
         }
 
-        const y = upload.textureHeight - upload.y - upload.height;
+        const y = upload.y;
         // Blazor serialises nested byte arrays as base64 strings. WebGL requires
         // an ArrayBufferView, not a string or a plain JavaScript array.
         const pixels = typeof upload.data === "string"

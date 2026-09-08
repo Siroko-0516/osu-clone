@@ -4,6 +4,7 @@
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Input.Events;
 using osuTK.Graphics;
 
 namespace osu.Web
@@ -14,6 +15,42 @@ namespace osu.Web
     /// </summary>
     public sealed class BrowserBootstrapGame : osu.Framework.Game
     {
+        public long ProcessedInputEvents { get; private set; }
+        private readonly Box cursor = new Box { Size = new osuTK.Vector2(16), Colour = Color4.Cyan, Depth = -1 };
+
+        protected override bool OnMouseMove(MouseMoveEvent e)
+        {
+            cursor.Position = e.MousePosition;
+            ProcessedInputEvents++;
+            return base.OnMouseMove(e);
+        }
+
+        protected override bool OnMouseDown(MouseDownEvent e)
+        {
+            cursor.Colour = Color4.White;
+            ProcessedInputEvents++;
+            return true;
+        }
+
+        protected override void OnMouseUp(MouseUpEvent e)
+        {
+            cursor.Colour = Color4.Cyan;
+            ProcessedInputEvents++;
+            base.OnMouseUp(e);
+        }
+
+        protected override bool OnKeyDown(KeyDownEvent e)
+        {
+            ProcessedInputEvents++;
+            return true;
+        }
+
+        protected override void OnKeyUp(KeyUpEvent e)
+        {
+            ProcessedInputEvents++;
+            base.OnKeyUp(e);
+        }
+
         [BackgroundDependencyLoader]
         private void load()
         {
@@ -31,6 +68,7 @@ namespace osu.Web
                     Size = new osuTK.Vector2(360, 120),
                     Colour = new Color4(236, 52, 123, 255),
                 },
+                cursor,
             };
         }
     }

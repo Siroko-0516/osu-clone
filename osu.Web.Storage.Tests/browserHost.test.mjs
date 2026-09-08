@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../osu.Web/wwwroot/js/browserHost.js', import.meta.url), 'utf8');
-const host = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const importable = source.replace("'./browserInput.mjs'", JSON.stringify(new URL('../osu.Web/wwwroot/js/browserInput.mjs', import.meta.url).href));
+const host = await import(`data:text/javascript;base64,${Buffer.from(importable).toString('base64')}`);
 
 test('renderer startup and texture transport', async () => {
     const reports = [];
@@ -38,6 +39,10 @@ test('renderer startup and texture transport', async () => {
             assert.ok(pixels instanceof Uint8Array);
             assert.deepEqual([...pixels], [255, 0, 128, 255]);
         }
+        host.applyTextureUploads([{ textureId: 2, textureWidth: 8, textureHeight: 8, x: 2, y: 1, width: 1, height: 2, data: new Uint8Array(8) }]);
+        const region = calls.filter(call => call[0] === 'texSubImage2D').at(-1);
+        assert.equal(region[3], 2);
+        assert.equal(region[4], 1, 'atlas Y must agree with top-left framework UVs');
     } finally {
         host.stopBrowserHost();
         delete globalThis.window;
