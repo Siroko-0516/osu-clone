@@ -5,6 +5,7 @@ let dotnet;
 let program;
 let frameworkProgram;
 let frameworkBuffer;
+let fallbackTexture;
 let frame = 0;
 let pumpPending = false;
 let pointer = { x: 0, y: 0, down: false };
@@ -12,6 +13,7 @@ let activePointerId = null;
 const keys = new Set();
 let ruleset = "osu";
 let frameworkFrame;
+const frameworkTextures = new Map();
 const listeners = [];
 let lastPointerReport = 0;
 let lastKeyboardState = "";
@@ -79,19 +81,24 @@ void main() {
 const frameworkVertexSource = `#version 300 es
 in vec2 a_position;
 in vec4 a_colour;
+in vec2 a_tex_coord;
 uniform vec2 u_viewport;
 out vec4 v_colour;
+out vec2 v_tex_coord;
 void main() {
     vec2 clip = (a_position / u_viewport) * 2.0 - 1.0;
     gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
     v_colour = a_colour;
+    v_tex_coord = a_tex_coord;
 }`;
 
 const frameworkFragmentSource = `#version 300 es
 precision highp float;
 in vec4 v_colour;
+in vec2 v_tex_coord;
+uniform sampler2D u_texture;
 out vec4 colour;
-void main() { colour = v_colour; }`;
+void main() { colour = texture(u_texture, v_tex_coord) * v_colour; }`;
 
 function listen(target, event, handler, options) {
     target.addEventListener(event, handler, options);
@@ -134,29 +141,33 @@ function drawFrameworkFrame(state) {
     const triangles = [];
 
     // osu!framework's quad batches contain four vertices in BL, BR, TR, TL order.
-    // Expand them into WebGL triangles while the native indexed batch is being ported.
-    for (let offset = 0; offset + 23 < source.length; offset += 24) {
+    // Expand and draw each quad with the texture that was active for its batch.
+    for (let offset = 0; offset + 35 < source.length; offset += 36) {
+        triangles.length = 0;
         for (const vertex of [0, 1, 2, 2, 3, 0]) {
-            const start = offset + vertex * 6;
-            triangles.push(...source.slice(start, start + 6));
+            const start = offset + vertex * 9;
+            triangles.push(...source.slice(start, start + 8));
         }
+
+        gl.useProgram(frameworkProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangles), gl.DYNAMIC_DRAW);
+
+        const position = gl.getAttribLocation(frameworkProgram, "a_position");
+        const colour = gl.getAttribLocation(frameworkProgram, "a_colour");
+        const texCoord = gl.getAttribLocation(frameworkProgram, "a_tex_coord");
+        gl.enableVertexAttribArray(position);
+        gl.enableVertexAttribArray(colour);
+        gl.enableVertexAttribArray(texCoord);
+        gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 32, 0);
+        gl.vertexAttribPointer(colour, 4, gl.FLOAT, false, 32, 8);
+        gl.vertexAttribPointer(texCoord, 2, gl.FLOAT, false, 32, 24);
+        gl.uniform2f(gl.getUniformLocation(frameworkProgram, "u_viewport"), viewportWidth, viewportHeight);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, frameworkTextures.get(source[offset + 8]) ?? fallbackTexture);
+        gl.uniform1i(gl.getUniformLocation(frameworkProgram, "u_texture"), 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
-
-    if (triangles.length === 0)
-        return;
-
-    gl.useProgram(frameworkProgram);
-    gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangles), gl.DYNAMIC_DRAW);
-
-    const position = gl.getAttribLocation(frameworkProgram, "a_position");
-    const colour = gl.getAttribLocation(frameworkProgram, "a_colour");
-    gl.enableVertexAttribArray(position);
-    gl.enableVertexAttribArray(colour);
-    gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 24, 0);
-    gl.vertexAttribPointer(colour, 4, gl.FLOAT, false, 24, 8);
-    gl.uniform2f(gl.getUniformLocation(frameworkProgram, "u_viewport"), viewportWidth, viewportHeight);
-    gl.drawArrays(gl.TRIANGLES, 0, triangles.length / 6);
 }
 
 export async function startBrowserHost(target, dotnetReference) {
@@ -172,6 +183,9 @@ export async function startBrowserHost(target, dotnetReference) {
     program = createProgram();
     frameworkProgram = createFrameworkProgram();
     frameworkBuffer = gl.createBuffer();
+    fallbackTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, fallbackTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
@@ -316,6 +330,8 @@ export function stopBrowserHost() {
     gl = undefined;
     frameworkProgram = undefined;
     frameworkBuffer = undefined;
+    fallbackTexture = undefined;
+    frameworkTextures.clear();
 }
 
 export function setRuleset(mode) {
@@ -326,4 +342,29 @@ export function setRuleset(mode) {
 
 export function applyFrameworkFrame(state) {
     frameworkFrame = state;
+}
+
+export function applyTextureUploads(uploads) {
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+    for (const upload of uploads) {
+        let entry = frameworkTextures.get(upload.textureId);
+
+        if (!entry) {
+            entry = gl.createTexture();
+            frameworkTextures.set(upload.textureId, entry);
+            gl.bindTexture(gl.TEXTURE_2D, entry);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, upload.textureWidth, upload.textureHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        } else {
+            gl.bindTexture(gl.TEXTURE_2D, entry);
+        }
+
+        const y = upload.textureHeight - upload.y - upload.height;
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, upload.x, y, upload.width, upload.height, gl.RGBA, gl.UNSIGNED_BYTE, upload.data);
+    }
 }

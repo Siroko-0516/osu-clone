@@ -30,6 +30,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Validate browser JavaScript syntax
+        run: node --check osu.Web/wwwroot/js/browserHost.js
+
       - name: Verify browser metadata storage contracts
         working-directory: osu.Web.Storage.Tests
         run: |

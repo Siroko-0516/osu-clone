@@ -62,18 +62,18 @@
         if (!firstRender)
             return;
 
-        module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js");
-        self = DotNetObjectReference.Create(this);
-        await module.InvokeVoidAsync("startBrowserHost", canvas, self);
-
         try
         {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=2-textures");
+            self = DotNetObjectReference.Create(this);
+            await module.InvokeVoidAsync("startBrowserHost", canvas, self);
+
             gameStatus = "initialising BrowserGameHost";
             StateHasChanged();
             gameHost = new BrowserGameHost("osu-web");
             game = new BrowserBootstrapGame();
             gameHost.Run(game);
-            gameStatus = "Browser runtime running · osu! services migrating";
+            gameStatus = "Original UI scene running";
         }
         catch (Exception exception)
         {
@@ -99,16 +99,22 @@
     }
 
     [JSInvokable]
-    public Task PumpGameFrame(long frame)
+    public async Task PumpGameFrame(long frame)
     {
         if (!gameFailed && gameHost is not null)
         {
             try
             {
                 gameHost.PumpFrame();
+                var uploads = gameHost.GetBrowserTextureUploads();
                 float[] state = gameHost.GetBrowserFrameState();
                 if (module is not null)
-                    _ = module.InvokeVoidAsync("applyFrameworkFrame", state);
+                {
+                    if (uploads.Length > 0)
+                        await module.InvokeVoidAsync("applyTextureUploads", uploads);
+
+                    await module.InvokeVoidAsync("applyFrameworkFrame", state);
+                }
                 gameFrameCount = frame;
             }
             catch (Exception exception)
@@ -118,9 +124,8 @@
             }
         }
 
-        return frame % 30 == 0 || gameFailed
-            ? InvokeAsync(StateHasChanged)
-            : Task.CompletedTask;
+        if (frame % 30 == 0 || gameFailed)
+            await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
