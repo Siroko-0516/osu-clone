@@ -1,3 +1,5 @@
+import { unlockAudio } from './browserAudio.mjs';
+
 // Preserve input edges between animation frames, including taps shorter than one frame.
 export function attachBrowserInput(canvas) {
     const events = [];
@@ -37,6 +39,7 @@ export function attachBrowserInput(canvas) {
         move();
     });
     listen(canvas, 'pointerdown', event => {
+        unlockAudio();
         if (pointerId !== null && pointerId !== event.pointerId) return;
         event.preventDefault();
         position(event);
@@ -58,6 +61,7 @@ export function attachBrowserInput(canvas) {
     listen(window, 'pointercancel', event => { if (event.pointerId === pointerId) releaseButtons(); });
     listen(canvas, 'contextmenu', event => event.preventDefault());
     listen(canvas, 'keydown', event => {
+        unlockAudio();
         if (!event.code || event.isComposing) return;
         event.preventDefault();
         if (event.repeat || keys.has(event.code)) return;

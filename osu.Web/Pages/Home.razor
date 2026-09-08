@@ -32,6 +32,12 @@
         <div class="canvas-hint">Move or click the pointer · press Z / X or arrow keys</div>
     </section>
 
+    <div>
+        <button @onclick="StartAudioTest">Play 5-second framework audio test</button>
+        <button @onclick="() => game?.AudioTestTrack?.Stop()">Pause audio test</button>
+        <button @onclick="() => game?.AudioTestTrack?.Seek(2000)">Seek audio test to 2 seconds</button>
+    </div>
+
     <dl>
         <div><dt>Original game</dt><dd>Not started — native services still require porting</dd></div>
         <div><dt>Diagnostic runtime</dt><dd>@gameStatus</dd></div>
@@ -39,6 +45,7 @@
         <div><dt>Diagnostic frames</dt><dd>@gameFrameCount</dd></div>
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
         <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
+        <div><dt>Framework audio position</dt><dd>@(game?.AudioTestTrack?.CurrentTime.ToString("0") ?? "0") ms</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
         <div><dt>mania</dt><dd>@typeof(ManiaRuleset).Assembly.GetName().Name</dd></div>
         <div><dt>taiko</dt><dd>@typeof(TaikoRuleset).Assembly.GetName().Name</dd></div>
@@ -49,6 +56,7 @@
 @code {
     private ElementReference canvas;
     private IJSObjectReference? module;
+    private IJSInProcessObjectReference? audioModule;
     private DotNetObjectReference<Home>? self;
     private WebGameHost? gameHost;
     private BrowserBootstrapGame? game;
@@ -66,6 +74,8 @@
 
         try
         {
+            audioModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserAudio.mjs");
+            osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=3-input");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
@@ -108,6 +118,12 @@
         selectedMode = mode;
         if (module is not null)
             await module.InvokeVoidAsync("setRuleset", mode);
+    }
+
+    private void StartAudioTest()
+    {
+        audioModule?.InvokeVoid("unlockAudio");
+        game?.StartAudioTest();
     }
 
     [JSInvokable]
@@ -195,5 +211,11 @@
         }
 
         self?.Dispose();
+        osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = null;
+        if (audioModule is not null)
+        {
+            audioModule.InvokeVoid("disposeAudio");
+            await audioModule.DisposeAsync();
+        }
     }
 }

@@ -2,6 +2,6 @@
   "name": "osu-web-storage-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test recordStore.test.mjs browserHost.test.mjs browserInput.test.mjs" },
+  "scripts": { "test": "node --test recordStore.test.mjs browserHost.test.mjs browserInput.test.mjs browserAudio.test.mjs" },
   "devDependencies": { "fake-indexeddb": "6.2.5" }
 }
