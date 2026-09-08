@@ -2,6 +2,7 @@ using System.Text.Json;
 using osu.Game.Database.Persistence;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Configuration;
+using osu.Game.Rulesets.Mania;
 using osu.Web.Storage;
 using osu.Framework.Input.Bindings;
 
@@ -71,6 +72,19 @@ subscription.Dispose();
 await keys.SaveBindingsAsync("osu", 0, mappings);
 Check(notifications == 1, "Disposed subscriber still received keymap changes.");
 Console.WriteLine("PASS keymap persistence, commit notifications, snapshot isolation and unsubscription");
+
+var mania = new ManiaRuleset();
+for (int keyCount = 1; keyCount <= 9; keyCount++)
+{
+    var defaults = mania.GetDefaultKeyBindings(keyCount).Where(binding => !binding.KeyCombination.Keys.Contains(InputKey.None)).ToArray();
+    Check(defaults.Length == keyCount, $"mania {keyCount}K did not expose one physical binding per lane.");
+    Check(defaults.Select(binding => Convert.ToInt32(binding.Action)).Distinct().Count() == keyCount, $"mania {keyCount}K lane actions were not unique.");
+}
+await restoredKeys.SaveBindingsAsync(ManiaRuleset.SHORT_NAME, 4, mania.GetDefaultKeyBindings(4).Where(binding => !binding.KeyCombination.Keys.Contains(InputKey.None)));
+await restoredKeys.SaveBindingsAsync(ManiaRuleset.SHORT_NAME, 9, mania.GetDefaultKeyBindings(9).Where(binding => !binding.KeyCombination.Keys.Contains(InputKey.None)));
+Check(restoredKeys.GetBindings(ManiaRuleset.SHORT_NAME, 4).Count == 4, "mania 4K bindings were not stored by variant.");
+Check(restoredKeys.GetBindings(ManiaRuleset.SHORT_NAME, 9).Count == 9, "mania 9K bindings were not stored by variant.");
+Console.WriteLine("PASS original mania 1K through 9K defaults and variant-specific persistence");
 
 using var mappingProbe = new MappingProbe();
 var filtered = mappingProbe.Apply(new IKeyBinding[]

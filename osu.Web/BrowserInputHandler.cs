@@ -49,6 +49,10 @@ public sealed class BrowserInputHandler : InputHandler
                     "ArrowLeft" => "Left", "ArrowRight" => "Right", "ArrowUp" => "Up", "ArrowDown" => "Down",
                     "ShiftLeft" => "LShift", "ShiftRight" => "RShift", "ControlLeft" => "LControl", "ControlRight" => "RControl",
                     "AltLeft" => "LAlt", "AltRight" => "RAlt", "Backspace" => "BackSpace",
+                    "MetaLeft" => "LWin", "MetaRight" => "RWin", "Backquote" => "Tilde", "Equal" => "Plus", "Backslash" => "BackSlash",
+                    "NumpadAdd" => "KeypadAdd", "NumpadSubtract" => "KeypadSubtract", "NumpadMultiply" => "KeypadMultiply",
+                    "NumpadDivide" => "KeypadDivide", "NumpadDecimal" => "KeypadDecimal", "NumpadEnter" => "KeypadEnter",
+                    _ when input.Code.StartsWith("Numpad", StringComparison.Ordinal) && input.Code.Length == 7 => "Keypad" + input.Code[6..],
                     _ when input.Code.StartsWith("Key", StringComparison.Ordinal) => input.Code[3..],
                     _ when input.Code.StartsWith("Digit", StringComparison.Ordinal) => "Number" + input.Code[5..],
                     _ => input.Code

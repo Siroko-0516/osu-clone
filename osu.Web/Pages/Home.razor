@@ -32,6 +32,33 @@
         <button class="@(selectedMode == "catch" ? "active" : null)" @onclick='() => SelectMode("catch")'>osu!catch</button>
     </nav>
 
+    @if (selectedMode == "mania")
+    {
+        <nav class="key-picker" aria-label="osu!mania key count">
+            @for (int keys = 1; keys <= 9; keys++)
+            {
+                int keyCount = keys;
+                <button class="@(maniaKeys == keyCount ? "active" : null)" @onclick="() => SelectManiaKeys(keyCount)">@keyCount K</button>
+            }
+        </nav>
+    }
+
+    @if (!Original && bindingRows.Count > 0)
+    {
+        <section class="binding-editor" aria-label="Current ruleset key bindings">
+            <div class="binding-title"><strong>@BindingEditorTitle key bindings</strong><button @onclick="ResetCurrentBindings">Restore defaults</button></div>
+            @foreach (var row in bindingRows)
+            {
+                <label><span>@row.ActionName</span><select value="@((int)row.Key)" @onchange="args => ChangeBinding(row, args)" disabled="@bindingsSaving">
+                    @foreach (var key in selectableKeys)
+                    {
+                        <option value="@((int)key)">@key</option>
+                    }
+                </select></label>
+            }
+        </section>
+    }
+
     <section class="canvas-panel">
         <canvas @ref="canvas" tabindex="0" aria-label="osu browser WebGL host diagnostic canvas"></canvas>
         <div class="canvas-hint">@ModeInputHint</div>
@@ -57,7 +84,7 @@
         <div><dt>Diagnostic frames</dt><dd>@gameFrameCount</dd></div>
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
         <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
-        <div><dt>Original osu! action test</dt><dd>@(game?.LastAction ?? "none") · @(game?.ActionPressCount ?? 0) pressed / @(game?.ActionReleaseCount ?? 0) released · @keyBindingStatus</dd></div>
+        <div><dt>Original ruleset action test</dt><dd>@(game?.LastAction ?? "none") · @(game?.ActionPressCount ?? 0) pressed / @(game?.ActionReleaseCount ?? 0) released · @keyBindingStatus</dd></div>
         <div><dt>Framework audio position</dt><dd>@(game?.AudioTestTrack?.CurrentTime.ToString("0") ?? "0") ms</dd></div>
         <div><dt>Framework sample</dt><dd>@(game?.AudioTestSample?.Length.ToString("0") ?? "0") ms · @(game?.SamplePlayCount ?? 0) plays</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
@@ -85,10 +112,11 @@
     private string gameStatus = "waiting";
     private string inputStatus = "waiting";
     private string selectedMode = "osu";
+    private int maniaKeys = 4;
     private string ModeInputHint => selectedMode switch
     {
         "osu" => "osu!standard · aim with the pointer · hit/hold with mouse or Z / X",
-        "mania" => "osu!mania · play the note lanes with keyboard keys",
+        "mania" => $"osu!mania {maniaKeys}K · play all {maniaKeys} note lanes with keyboard keys",
         "taiko" => "osu!taiko · hit rim/centre with D / F / J / K",
         "catch" => "osu!catch · move with Z / X or ← / → · dash with Shift",
         _ => "Keyboard input"
@@ -101,6 +129,90 @@
     private readonly List<IDisposable> rulesetConfigs = new();
     private bool settingsSaving;
     private string settingsStatus = "Loading browser settings";
+    private bool bindingsSaving;
+    private List<BindingEditorRow> bindingRows = new();
+    private static readonly osu.Framework.Input.Bindings.InputKey[] selectableKeys = Enum.GetValues<osu.Framework.Input.Bindings.InputKey>()
+        .Where(key => ((int)key >= 1 && (int)key <= 130) || ((int)key >= 132 && (int)key <= 134))
+        .DistinctBy(key => (int)key).ToArray();
+    private int CurrentVariant => selectedMode == "mania" ? maniaKeys : 0;
+    private osu.Game.Rulesets.Ruleset CurrentRuleset => selectedMode switch
+    {
+        "mania" => new ManiaRuleset(), "taiko" => new TaikoRuleset(), "catch" => new CatchRuleset(), _ => new OsuRuleset()
+    };
+    private string BindingEditorTitle => selectedMode switch
+    {
+        "osu" => "osu!standard", "mania" => $"osu!mania {maniaKeys}K", "taiko" => "osu!taiko", "catch" => "osu!catch", _ => selectedMode
+    };
+
+    private string GetActionName(int action) => selectedMode switch
+    {
+        "mania" => Enum.GetName(typeof(ManiaAction), action),
+        "taiko" => Enum.GetName(typeof(TaikoAction), action),
+        "catch" => Enum.GetName(typeof(CatchAction), action),
+        _ => Enum.GetName(typeof(OsuAction), action)
+    } ?? action.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed class BindingEditorRow
+    {
+        public required int Action { get; init; }
+        public required string ActionName { get; init; }
+        public osu.Framework.Input.Bindings.InputKey Key { get; set; }
+    }
+
+    private void LoadBindingEditor()
+    {
+        if (keyBindingStore is null) return;
+        var ruleset = CurrentRuleset;
+        IReadOnlyList<osu.Framework.Input.Bindings.IKeyBinding> bindings = keyBindingStore.GetBindings(ruleset.RulesetInfo.ShortName, CurrentVariant);
+        if (bindings.Count == 0) bindings = ruleset.GetDefaultKeyBindings(CurrentVariant).Cast<osu.Framework.Input.Bindings.IKeyBinding>().ToArray();
+        bindingRows = bindings.Where(binding => binding.KeyCombination.Keys.Any(key => key != osu.Framework.Input.Bindings.InputKey.None))
+            .Select(binding => new BindingEditorRow
+            {
+                Action = Convert.ToInt32(binding.Action),
+                ActionName = GetActionName(Convert.ToInt32(binding.Action)),
+                Key = binding.KeyCombination.Keys.First(key => key != osu.Framework.Input.Bindings.InputKey.None)
+            }).ToList();
+    }
+
+    private async Task SaveBindingEditor()
+    {
+        if (keyBindingStore is null) return;
+        bindingsSaving = true;
+        try
+        {
+            var ruleset = CurrentRuleset;
+            await keyBindingStore.SaveBindingsAsync(ruleset.RulesetInfo.ShortName, CurrentVariant,
+                bindingRows.Select(row => (osu.Framework.Input.Bindings.IKeyBinding)new osu.Framework.Input.Bindings.KeyBinding(row.Key, row.Action)));
+            keyBindingStatus = $"{BindingEditorTitle} bindings saved";
+        }
+        catch (Exception exception) { keyBindingStatus = "Save failed: " + exception.Message; }
+        finally { bindingsSaving = false; }
+    }
+
+    private async Task ChangeBinding(BindingEditorRow row, ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out int value) && Enum.IsDefined(typeof(osu.Framework.Input.Bindings.InputKey), value))
+        {
+            var next = (osu.Framework.Input.Bindings.InputKey)value;
+            if (bindingRows.Any(other => !ReferenceEquals(other, row) && other.Key == next))
+            {
+                keyBindingStatus = $"{next} is already assigned in {BindingEditorTitle}";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            row.Key = next;
+            await SaveBindingEditor();
+        }
+    }
+
+    private async Task ResetCurrentBindings()
+    {
+        if (keyBindingStore is null) return;
+        var ruleset = CurrentRuleset;
+        await keyBindingStore.SaveBindingsAsync(ruleset.RulesetInfo.ShortName, CurrentVariant, ruleset.GetDefaultKeyBindings(CurrentVariant));
+        LoadBindingEditor();
+        keyBindingStatus = $"{BindingEditorTitle} defaults restored";
+    }
 
     private async Task SetActionKeys(bool useA)
     {
@@ -111,6 +223,7 @@
             var bindings = ruleset.GetDefaultKeyBindings(0).Select(binding => (osu.Framework.Input.Bindings.IKeyBinding)new osu.Framework.Input.Bindings.KeyBinding(
                 new osu.Framework.Input.Bindings.KeyCombination(binding.KeyCombination.Keys.Select(key => useA && key == osu.Framework.Input.Bindings.InputKey.Z ? osu.Framework.Input.Bindings.InputKey.A : key).ToArray()), binding.Action));
             await keyBindingStore.SaveBindingsAsync(ruleset.RulesetInfo.ShortName, 0, bindings);
+            LoadBindingEditor();
             keyBindingStatus = useA ? "A / X saved" : "Z / X defaults saved";
         }
         catch (Exception exception) { keyBindingStatus = "Save failed: " + exception.Message; }
@@ -142,6 +255,7 @@
             settingsStore = await BrowserSettingsStore.CreateAsync(Records);
             keyBindingStore = await BrowserKeyBindingStore.CreateAsync(Records);
             keyBindingStatus = "Browser key bindings loaded";
+            LoadBindingEditor();
             foreach (var ruleset in new osu.Game.Rulesets.Ruleset[] { new OsuRuleset(), new ManiaRuleset(), new TaikoRuleset() })
             {
                 var config = ruleset.CreateConfig(settingsStore);
@@ -198,8 +312,20 @@
     private async Task SelectMode(string mode)
     {
         selectedMode = mode;
+        game?.SetRuleset(mode, mode == "mania" ? maniaKeys : 0);
+        LoadBindingEditor();
+        keyBindingStatus = $"{BindingEditorTitle} bindings loaded";
         if (module is not null)
             await module.InvokeVoidAsync("setRuleset", mode);
+    }
+
+    private Task SelectManiaKeys(int keys)
+    {
+        maniaKeys = Math.Clamp(keys, 1, 9);
+        game?.SetRuleset("mania", maniaKeys);
+        LoadBindingEditor();
+        keyBindingStatus = $"mania {maniaKeys}K bindings loaded";
+        return InvokeAsync(StateHasChanged);
     }
 
     private void StartAudioTest()

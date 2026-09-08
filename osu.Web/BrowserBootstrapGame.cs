@@ -3,6 +3,7 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Events;
 using osu.Framework.Audio.Track;
@@ -11,6 +12,9 @@ using osu.Framework.IO.Stores;
 using osu.Framework.Input.Bindings;
 using osu.Game.Input.Bindings;
 using osu.Game.Rulesets.Osu;
+using osu.Game.Rulesets.Mania;
+using osu.Game.Rulesets.Taiko;
+using osu.Game.Rulesets.Catch;
 using osu.Game.Rulesets.UI;
 using osuTK.Graphics;
 
@@ -36,21 +40,42 @@ namespace osu.Web
             return dependencies;
         }
 
-        private sealed class ActionProbe(BrowserBootstrapGame game) : Drawable, IKeyBindingHandler<OsuAction>
+        private sealed class ActionProbe<T>(BrowserBootstrapGame game, string mode) : Drawable, IKeyBindingHandler<T>
+            where T : struct
         {
-            public bool OnPressed(KeyBindingPressEvent<OsuAction> e)
+            public bool OnPressed(KeyBindingPressEvent<T> e)
             {
                 game.ActionPressCount++;
-                game.LastAction = e.Action.ToString();
+                game.LastAction = $"{mode}: {e.Action}";
                 return true;
             }
-            public void OnReleased(KeyBindingReleaseEvent<OsuAction> e) => game.ActionReleaseCount++;
+            public void OnReleased(KeyBindingReleaseEvent<T> e) => game.ActionReleaseCount++;
         }
         public long ProcessedInputEvents { get; private set; }
         private readonly Box cursor = new Box { Size = new osuTK.Vector2(16), Colour = Color4.Cyan, Depth = -1 };
         public Track? AudioTestTrack { get; private set; }
         public Sample? AudioTestSample { get; private set; }
         public int SamplePlayCount { get; private set; }
+        private readonly Container inputLayer = new() { RelativeSizeAxes = Axes.Both };
+
+        public void SetRuleset(string mode, int variant = 0) => Schedule(() =>
+        {
+            inputLayer.Child = mode switch
+            {
+                "mania" => createInputContainer<ManiaAction>(new ManiaRuleset(), variant, mode),
+                "taiko" => createInputContainer<TaikoAction>(new TaikoRuleset(), 0, mode),
+                "catch" => createInputContainer<CatchAction>(new CatchRuleset(), 0, mode),
+                _ => createInputContainer<OsuAction>(new OsuRuleset(), 0, "osu")
+            };
+        });
+
+        private Drawable createInputContainer<T>(osu.Game.Rulesets.Ruleset ruleset, int variant, string mode)
+            where T : struct
+            => new RulesetInputManager<T>.RulesetKeyBindingContainer(ruleset.RulesetInfo, variant, SimultaneousBindingMode.Unique)
+            {
+                RelativeSizeAxes = Axes.Both,
+                Child = new ActionProbe<T>(this, mode) { RelativeSizeAxes = Axes.Both },
+            };
 
         public void StartSampleTest()
         {
@@ -144,12 +169,9 @@ namespace osu.Web
                     Colour = new Color4(236, 52, 123, 255),
                 },
                 cursor,
-                new RulesetInputManager<OsuAction>.RulesetKeyBindingContainer(new OsuRuleset().RulesetInfo, 0, SimultaneousBindingMode.Unique)
-                {
-                    RelativeSizeAxes = Axes.Both,
-                    Child = new ActionProbe(this) { RelativeSizeAxes = Axes.Both },
-                },
+                inputLayer,
             };
+            SetRuleset("osu");
         }
     }
 }
