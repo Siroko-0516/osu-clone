@@ -4,6 +4,15 @@
 using System;
 using osu.Game;
 
-// This executable is a compatibility probe, not the final host.
-// Reaching this line means the complete osu.Game dependency graph linked for browser-wasm.
-Console.WriteLine(typeof(OsuGame).FullName);
+namespace osu.Web.Probe
+{
+    public static class Program
+    {
+        public static void Main()
+        {
+            // This executable is a compatibility probe, not the final host.
+            // Reaching this line means the complete osu.Game dependency graph linked for browser-wasm.
+            Console.WriteLine(typeof(OsuGame).FullName);
+        }
+    }
+}
