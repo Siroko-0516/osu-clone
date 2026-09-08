@@ -80,6 +80,15 @@ public sealed class WebGameHost : BrowserGameHost
 {
     public BrowserInputHandler BrowserInput { get; } = new();
     public WebGameHost(string name) : base(name) { }
-    public void Resize(int width, int height) => Config.SetValue(osu.Framework.Configuration.FrameworkSetting.WindowedSize, new System.Drawing.Size(Math.Max(1, width), Math.Max(1, height)));
+    public void Resize(int width, int height)
+    {
+        // Run() with an external browser loop may report Running just before the
+        // host has installed its config manager. The next animation frame retries.
+        if (Config is null)
+            return;
+
+        Config.SetValue(osu.Framework.Configuration.FrameworkSetting.WindowedSize, new System.Drawing.Size(Math.Max(1, width), Math.Max(1, height)));
+    }
     protected override IEnumerable<InputHandler> CreateAvailableInputHandlers() => new[] { BrowserInput };
 }
+
