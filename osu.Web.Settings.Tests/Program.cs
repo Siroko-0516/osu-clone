@@ -18,7 +18,7 @@ static class Program
         {
             if (!condition) throw new Exception(message);
         }
-        
+
         var records = new MemoryRecords();
         var settings = await BrowserSettingsStore.CreateAsync(records);
         using var config = new OsuRulesetConfigManager(settings, new OsuRuleset().RulesetInfo);
@@ -29,7 +29,7 @@ static class Program
         using var restoredConfig = new OsuRulesetConfigManager(restored, new OsuRuleset().RulesetInfo);
         Check(!restoredConfig.Get<bool>(OsuRulesetSetting.SnakingInSliders), "Original config failed to restore the persisted value.");
         Console.WriteLine("PASS original ruleset config round trip without Realm");
-        
+
         settings.WriteSettings("osu", 1, new Dictionary<string, string> { ["independent"] = "variant" });
         records.FailNext = true;
         try { await settings.FlushAsync(); throw new Exception("Expected commit failure."); }
@@ -39,7 +39,7 @@ static class Program
         Check(records.Items.ContainsKey(MemoryRecords.Key("ruleset-settings", "osu:1")), "Failed commit discarded pending values.");
         Check(!settings.ReadSettings("osu", 0).ContainsKey("independent"), "Variant settings leaked.");
         Console.WriteLine("PASS commit retry and variant isolation");
-        
+
         settings.WriteSettings("osu", 1, new Dictionary<string, string> { ["independent"] = "first" });
         records.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var flush = settings.FlushAsync();
@@ -51,7 +51,7 @@ static class Program
         await settings.FlushAsync();
         Check(JsonSerializer.Deserialize<Dictionary<string, string>>(records.Items[MemoryRecords.Key("ruleset-settings", "osu:1")].Payload)!["independent"] == "second", "In-flight commit lost a later setting change.");
         Console.WriteLine("PASS changes during commit remain dirty");
-        
+
         var stale = await BrowserSettingsStore.CreateAsync(records);
         settings.WriteSettings("osu", 1, new Dictionary<string, string> { ["independent"] = "newer tab" });
         await settings.FlushAsync();
@@ -60,7 +60,7 @@ static class Program
         catch (IOException) { }
         Check(JsonSerializer.Deserialize<Dictionary<string, string>>(records.Items[MemoryRecords.Key("ruleset-settings", "osu:1")].Payload)!["independent"] == "newer tab", "Stale tab overwrote committed settings.");
         Console.WriteLine("PASS stale writers cannot overwrite settings");
-        
+
         var keys = await BrowserKeyBindingStore.CreateAsync(records);
         int notifications = 0;
         using var subscription = keys.Subscribe("osu", 0, () => notifications++);
@@ -80,7 +80,7 @@ static class Program
         await keys.SaveBindingsAsync("osu", 0, mappings);
         Check(notifications == 1, "Disposed subscriber still received keymap changes.");
         Console.WriteLine("PASS keymap persistence, commit notifications, snapshot isolation and unsubscription");
-        
+
         var mania = new ManiaRuleset();
         for (int keyCount = 1; keyCount <= 9; keyCount++)
         {
@@ -93,9 +93,9 @@ static class Program
         Check(restoredKeys.GetBindings(ManiaRuleset.SHORT_NAME, 4).Count == 4, "mania 4K bindings were not stored by variant.");
         Check(restoredKeys.GetBindings(ManiaRuleset.SHORT_NAME, 9).Count == 9, "mania 9K bindings were not stored by variant.");
         Console.WriteLine("PASS original mania 1K through 9K defaults and variant-specific persistence");
-        
+
         using var mappingProbe = new MappingProbe();
-        
+
         var filtered = mappingProbe.Apply(new IKeyBinding[]
         {
             new KeyBinding(InputKey.MouseWheelUp, OsuAction.LeftButton),
@@ -104,7 +104,7 @@ static class Program
         });
         Check(filtered.Length == 2 && filtered.All(binding => binding.KeyCombination.Keys.Contains(InputKey.None)), "Original gameplay mapping safety rules were bypassed.");
         Console.WriteLine("PASS original gameplay duplicate and wheel-binding filters");
-        
+
         var catalogueRecords = new MemoryRecords();
         var catalogue = await BeatmapCatalogStore.CreateAsync(catalogueRecords);
         var set = new BeatmapSetSnapshot("set-1", "artist", "title", "mapper", "imports/set-1");
