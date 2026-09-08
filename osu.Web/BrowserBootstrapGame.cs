@@ -6,6 +6,7 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Events;
 using osu.Framework.Audio.Track;
+using osu.Framework.Audio.Sample;
 using osu.Framework.IO.Stores;
 using osuTK.Graphics;
 
@@ -20,30 +21,48 @@ namespace osu.Web
         public long ProcessedInputEvents { get; private set; }
         private readonly Box cursor = new Box { Size = new osuTK.Vector2(16), Colour = Color4.Cyan, Depth = -1 };
         public Track? AudioTestTrack { get; private set; }
+        public Sample? AudioTestSample { get; private set; }
+        public int SamplePlayCount { get; private set; }
+
+        public void StartSampleTest()
+        {
+            if (AudioTestSample is null)
+            {
+                writeTestTone("browser-sample-test.wav", 0.2);
+                AudioTestSample = Audio.GetSampleStore(new StorageBackedResourceStore(Host.Storage)).Get("browser-sample-test.wav");
+            }
+            AudioTestSample.Play();
+            SamplePlayCount++;
+        }
 
         public void StartAudioTest()
         {
             if (AudioTestTrack is null)
             {
-                const int sampleRate = 44100;
-                const int samples = sampleRate * 5;
-                using (var stream = Host.Storage.GetStream("browser-audio-test.wav", FileAccess.Write, FileMode.Create))
-                using (var writer = new BinaryWriter(stream))
-                {
-                    writer.Write("RIFF"u8); writer.Write(36 + samples * 2); writer.Write("WAVEfmt "u8);
-                    writer.Write(16); writer.Write((short)1); writer.Write((short)1);
-                    writer.Write(sampleRate); writer.Write(sampleRate * 2); writer.Write((short)2); writer.Write((short)16);
-                    writer.Write("data"u8); writer.Write(samples * 2);
-                    for (int i = 0; i < samples; i++)
-                    {
-                        double envelope = Math.Min(1, Math.Min(i, samples - i - 1) / 441.0);
-                        writer.Write((short)(Math.Sin(2 * Math.PI * 440 * i / sampleRate) * 2000 * envelope));
-                    }
-                }
+                writeTestTone("browser-audio-test.wav", 5);
                 AudioTestTrack = Audio.GetTrackStore(new StorageBackedResourceStore(Host.Storage)).Get("browser-audio-test.wav");
             }
             AudioTestTrack.Seek(0);
             AudioTestTrack.Start();
+        }
+
+        private void writeTestTone(string filename, double seconds)
+        {
+            const int sampleRate = 44100;
+            int samples = (int)(sampleRate * seconds);
+            using (var stream = Host.Storage.GetStream(filename, FileAccess.Write, FileMode.Create))
+            using (var writer = new BinaryWriter(stream))
+            {
+                writer.Write("RIFF"u8); writer.Write(36 + samples * 2); writer.Write("WAVEfmt "u8);
+                writer.Write(16); writer.Write((short)1); writer.Write((short)1);
+                writer.Write(sampleRate); writer.Write(sampleRate * 2); writer.Write((short)2); writer.Write((short)16);
+                writer.Write("data"u8); writer.Write(samples * 2);
+                for (int i = 0; i < samples; i++)
+                {
+                    double envelope = Math.Min(1, Math.Min(i, samples - i - 1) / 441.0);
+                    writer.Write((short)(Math.Sin(2 * Math.PI * 440 * i / sampleRate) * 2000 * envelope));
+                }
+            }
         }
 
         protected override bool OnMouseMove(MouseMoveEvent e)

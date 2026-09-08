@@ -36,6 +36,7 @@
         <button @onclick="StartAudioTest">Play 5-second framework audio test</button>
         <button @onclick="() => game?.AudioTestTrack?.Stop()">Pause audio test</button>
         <button @onclick="() => game?.AudioTestTrack?.Seek(2000)">Seek audio test to 2 seconds</button>
+        <button @onclick="StartSampleTest">Play 200-ms framework sample</button>
     </div>
 
     <dl>
@@ -46,6 +47,7 @@
         <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
         <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
         <div><dt>Framework audio position</dt><dd>@(game?.AudioTestTrack?.CurrentTime.ToString("0") ?? "0") ms</dd></div>
+        <div><dt>Framework sample</dt><dd>@(game?.AudioTestSample?.Length.ToString("0") ?? "0") ms · @(game?.SamplePlayCount ?? 0) plays</dd></div>
         <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
         <div><dt>mania</dt><dd>@typeof(ManiaRuleset).Assembly.GetName().Name</dd></div>
         <div><dt>taiko</dt><dd>@typeof(TaikoRuleset).Assembly.GetName().Name</dd></div>
@@ -57,6 +59,7 @@
     private ElementReference canvas;
     private IJSObjectReference? module;
     private IJSInProcessObjectReference? audioModule;
+    private IJSInProcessObjectReference? samplesModule;
     private DotNetObjectReference<Home>? self;
     private WebGameHost? gameHost;
     private BrowserBootstrapGame? game;
@@ -76,6 +79,8 @@
         {
             audioModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserAudio.mjs");
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
+            samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
+            osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
             module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=3-input");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
@@ -124,6 +129,12 @@
     {
         audioModule?.InvokeVoid("unlockAudio");
         game?.StartAudioTest();
+    }
+
+    private void StartSampleTest()
+    {
+        audioModule?.InvokeVoid("unlockAudio");
+        game?.StartSampleTest();
     }
 
     [JSInvokable]
@@ -212,6 +223,12 @@
 
         self?.Dispose();
         osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = null;
+        osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = null;
+        if (samplesModule is not null)
+        {
+            samplesModule.InvokeVoid("disposeSamples");
+            await samplesModule.DisposeAsync();
+        }
         if (audioModule is not null)
         {
             audioModule.InvokeVoid("disposeAudio");

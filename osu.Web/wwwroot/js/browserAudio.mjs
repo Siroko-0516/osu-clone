@@ -1,7 +1,8 @@
 const tracks = new Map();
 let nextId = 0;
 let context;
-const getContext = () => context ??= new AudioContext({ latencyHint: 'interactive' });
+export const getAudioContext = () => context ??= new AudioContext({ latencyHint: 'interactive' });
+const getContext = getAudioContext;
 
 export function createTrack(bytes) {
     const data = typeof bytes === 'string' ? Uint8Array.from(atob(bytes), c => c.charCodeAt(0)) : new Uint8Array(bytes);
@@ -34,7 +35,7 @@ async function start(entry) {
 }
 
 export function unlockAudio() {
-    if (context) context.resume().catch(() => {});
+    getContext().resume().catch(() => {});
     for (const entry of tracks.values()) if (entry.requested && entry.audio.paused) void start(entry);
 }
 

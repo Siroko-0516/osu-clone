@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { attachBrowserInput } from '../osu.Web/wwwroot/js/browserInput.mjs';
+import { disposeAudio } from '../osu.Web/wwwroot/js/browserAudio.mjs';
 
 test('input bridge preserves short taps, focus release, and scaled pointer coordinates', () => {
     globalThis.window = new EventTarget();
     globalThis.document = new EventTarget();
+    let audioUnlocks = 0;
+    globalThis.AudioContext = class { async resume() {audioUnlocks++;} async close() {} };
     const canvas = new EventTarget();
     canvas.width = 1280;
     canvas.height = 960;
@@ -14,6 +17,7 @@ test('input bridge preserves short taps, focus release, and scaled pointer coord
     const emit = (target, name, props) => target.dispatchEvent(Object.assign(new Event(name, {cancelable:true}), props));
     try {
         emit(canvas, 'keydown', {code:'KeyZ'});
+        assert.equal(audioUnlocks, 1, 'the first user gesture unlocks audio before frame processing');
         emit(canvas, 'keydown', {code:'KeyZ',repeat:true});
         emit(window, 'keyup', {code:'KeyZ'});
         assert.deepEqual(bridge.drain(), [
@@ -47,6 +51,8 @@ test('input bridge preserves short taps, focus release, and scaled pointer coord
         assert.deepEqual(bridge.drain(), []);
     } finally {
         bridge.dispose();
+        disposeAudio();
+        delete globalThis.AudioContext;
         delete globalThis.window;
         delete globalThis.document;
     }
