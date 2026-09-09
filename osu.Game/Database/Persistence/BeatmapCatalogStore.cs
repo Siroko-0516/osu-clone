@@ -61,6 +61,11 @@ namespace osu.Game.Database.Persistence
             if (difficulties.Select(beatmap => beatmap.Id).Distinct(StringComparer.Ordinal).Count() != difficulties.Count)
                 throw new ArgumentException("A beatmap set cannot contain duplicate difficulty IDs.", nameof(difficulties));
 
+            HashSet<string> importedIds = difficulties.Select(beatmap => beatmap.Id).ToHashSet(StringComparer.Ordinal);
+            CatalogEntry<BeatmapSnapshot>[] removedDifficulties = beatmaps.Values
+                .Where(entry => entry.Value.SetId == set.Id && !importedIds.Contains(entry.Value.Id))
+                .ToArray();
+
             var changes = new List<RecordChange>(difficulties.Count + 1)
             {
                 createChange(SET_COLLECTION, set.Id, set, sets.GetValueOrDefault(set.Id)?.Revision ?? 0)
@@ -76,6 +81,20 @@ namespace osu.Game.Database.Persistence
             sets[set.Id] = new CatalogEntry<BeatmapSetSnapshot>(set, committed[0].Revision);
             for (int i = 0; i < difficulties.Count; i++)
                 beatmaps[difficulties[i].Id] = new CatalogEntry<BeatmapSnapshot>(difficulties[i], committed[i + 1].Revision);
+
+            // Re-importing a set replaces its difficulty list. Keep removed records as
+            // soft-deleted snapshots so another browser tab cannot silently resurrect them.
+            foreach (CatalogEntry<BeatmapSnapshot> removed in removedDifficulties)
+            {
+                StoredRecord? deleted = await records.SetDeletePendingAsync(
+                    BEATMAP_COLLECTION,
+                    removed.Value.Id,
+                    true,
+                    removed.Revision).ConfigureAwait(false);
+
+                if (deleted is not null)
+                    beatmaps.Remove(removed.Value.Id);
+            }
         }
 
         private async Task hydrateAsync()
