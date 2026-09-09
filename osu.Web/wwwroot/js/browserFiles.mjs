@@ -19,6 +19,21 @@ export function createBrowserFileStore(indexedDB, databaseName = 'osu-web-files'
                 request.onerror = () => reject(request.error);
             });
         },
+        async put(entries) {
+            const snapshot = entries.map(entry => {
+                if (!validPath(entry.path)) throw new TypeError('A safe relative file path is required.');
+                return { path: entry.path.replaceAll('\\', '/'), data: new Uint8Array(entry.data) };
+            });
+            if (!snapshot.length) return 0;
+            const database = await open();
+            return new Promise((resolve, reject) => {
+                const transaction = database.transaction('files', 'readwrite');
+                const store = transaction.objectStore('files');
+                for (const entry of snapshot) store.put(entry);
+                transaction.oncomplete = () => resolve(snapshot.length);
+                transaction.onabort = transaction.onerror = () => reject(transaction.error || new Error('File write transaction failed.'));
+            });
+        },
         async replaceAll(entries) {
             const snapshot = entries.map(entry => {
                 if (!validPath(entry.path)) throw new TypeError('A safe relative file path is required.');
@@ -41,5 +56,6 @@ export function createBrowserFileStore(indexedDB, databaseName = 'osu-web-files'
 let defaultStore;
 const store = () => defaultStore ??= createBrowserFileStore(globalThis.indexedDB);
 export const list = () => store().list();
+export const put = entries => store().put(entries);
 export const replaceAll = entries => store().replaceAll(entries);
 export const close = () => store().close();
