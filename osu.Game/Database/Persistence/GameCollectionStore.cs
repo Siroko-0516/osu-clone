@@ -53,7 +53,26 @@ namespace osu.Game.Database.Persistence
             ArgumentException.ThrowIfNullOrWhiteSpace(id);
             ArgumentNullException.ThrowIfNull(value);
 
-            long revision = entries.GetValueOrDefault(id)?.Revision ?? 0;
+            long revision;
+            if (entries.TryGetValue(id, out Entry? entry))
+            {
+                revision = entry.Revision;
+            }
+            else
+            {
+                StoredRecord? existing = await records.GetAsync(collection, id).ConfigureAwait(false);
+                revision = existing?.Revision ?? 0;
+
+                // Deleted records remain in the backing store so they can be restored. A new save
+                // must first acknowledge that revision and clear the deletion marker.
+                if (existing?.DeletePending == true)
+                {
+                    StoredRecord? restored = await records.SetDeletePendingAsync(collection, id, false, revision).ConfigureAwait(false);
+                    revision = restored?.Revision
+                               ?? throw new InvalidOperationException($"Stored {collection} record '{id}' disappeared while restoring it.");
+                }
+            }
+
             StoredRecord committed = await records.SaveAsync(
                 collection,
                 id,
