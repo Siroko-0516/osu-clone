@@ -4,6 +4,7 @@
 #nullable enable
 
 using System.Threading.Tasks;
+using osu.Game.Configuration;
 
 namespace osu.Game.Database.Persistence
 {
@@ -14,6 +15,8 @@ namespace osu.Game.Database.Persistence
     {
         public IRecordStore Records { get; }
 
+        public SettingsStore RulesetSettings { get; }
+
         public BeatmapCatalogStore Beatmaps { get; }
 
         public GameCollectionStore<SkinSnapshot> Skins { get; }
@@ -22,22 +25,24 @@ namespace osu.Game.Database.Persistence
 
         private GamePersistence(
             IRecordStore records,
+            SettingsStore rulesetSettings,
             BeatmapCatalogStore beatmaps,
             GameCollectionStore<SkinSnapshot> skins,
             GameCollectionStore<ScoreSnapshot> scores)
         {
             Records = records;
+            RulesetSettings = rulesetSettings;
             Beatmaps = beatmaps;
             Skins = skins;
             Scores = scores;
         }
 
-        public static async Task<GamePersistence> CreateAsync(IRecordStore records)
+        public static async Task<GamePersistence> CreateAsync(IRecordStore records, SettingsStore rulesetSettings)
         {
             var beatmaps = await BeatmapCatalogStore.CreateAsync(records).ConfigureAwait(false);
             var skins = await GameCollectionStore<SkinSnapshot>.CreateAsync(records, "skins").ConfigureAwait(false);
             var scores = await GameCollectionStore<ScoreSnapshot>.CreateAsync(records, "scores").ConfigureAwait(false);
-            return new GamePersistence(records, beatmaps, skins, scores);
+            return new GamePersistence(records, rulesetSettings, beatmaps, skins, scores);
         }
     }
 }
