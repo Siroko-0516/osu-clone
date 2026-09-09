@@ -19,6 +19,14 @@ test('binary files persist, replace atomically, and reject unsafe paths', async 
     await assert.rejects(store.replaceAll([{ path: '../escape', data: new Uint8Array([1]) }]));
     restored = await store.list();
     assert.equal(restored.length, 2, 'validation failure must retain the committed snapshot');
+    assert.equal(await store.put([{ path: 'osu-web/new.dat', data: new Uint8Array([6, 7]) }]), 1);
+    assert.deepEqual((await store.list()).map(entry => entry.path).sort(), [
+        'osu-web/new.dat',
+        'osu-web/skins/icon.png',
+        'osu-web/tracks/song.bin'
+    ], 'incremental writes must preserve unrelated files');
+    await assert.rejects(store.put([{ path: '../escape', data: new Uint8Array([1]) }]));
+    assert.equal((await store.list()).length, 3, 'failed incremental validation must not modify storage');
     await store.replaceAll([{ path: 'osu-web/only.dat', data: new Uint8Array([5]) }]);
     assert.deepEqual((await store.list()).map(entry => entry.path), ['osu-web/only.dat']);
     await store.close();
