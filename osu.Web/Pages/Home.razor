@@ -417,7 +417,7 @@
             beatmapLoader = new BrowserBeatmapLoader(beatmapCatalog, path => persistentStorage.GetStream(path, FileAccess.Read, FileMode.Open));
             osu.Framework.Game selectedGame;
             if (Original)
-                selectedGame = new BrowserOsuGame(persistence);
+                selectedGame = game = new BrowserOsuGame(keyBindingStore, persistence);
             else
                 selectedGame = game = new BrowserBootstrapGame(keyBindingStore, persistence);
             // Framework threads install their own SynchronizationContext. Blazor must
@@ -431,7 +431,7 @@
             {
                 System.Threading.SynchronizationContext.SetSynchronizationContext(browserContext);
             }
-            gameStatus = Original ? "Original OsuGame startup requested — gameplay unverified" : "Framework diagnostic running — not OsuGame";
+            gameStatus = Original ? "Realm-free browser game running" : "Framework diagnostic running — not OsuGame";
         }
         catch (Exception exception)
         {
@@ -570,7 +570,7 @@
                 }
 
                 if (gameStatus == "waiting for framework host startup")
-                    gameStatus = Original ? "Original OsuGame startup requested — gameplay unverified" : "Framework diagnostic running — not OsuGame";
+                    gameStatus = Original ? "Realm-free browser game running" : "Framework diagnostic running — not OsuGame";
 
                 var uploads = gameHost.GetBrowserTextureUploads();
                 float[] state = gameHost.GetBrowserFrameState();
