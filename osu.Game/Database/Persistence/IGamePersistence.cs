@@ -17,5 +17,9 @@ namespace osu.Game.Database.Persistence
         IRecordStore Records { get; }
 
         BeatmapCatalogStore Beatmaps { get; }
+
+        GameCollectionStore<SkinSnapshot> Skins { get; }
+
+        GameCollectionStore<ScoreSnapshot> Scores { get; }
     }
 }
