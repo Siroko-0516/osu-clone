@@ -40,6 +40,7 @@ using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.Configuration;
 using osu.Game.Database;
+using osu.Game.Database.Persistence;
 using osu.Game.Extensions;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Cursor;
@@ -173,6 +174,11 @@ namespace osu.Game
         protected IAPIProvider API { get; set; }
 
         protected Storage Storage { get; set; }
+
+        /// <summary>
+        /// Optional platform-neutral persistence supplied by hosts which cannot use Realm.
+        /// </summary>
+        protected virtual IGamePersistence GamePersistence => null;
 
         /// <summary>
         /// The language in which the game is currently displayed in.
@@ -551,8 +557,15 @@ namespace osu.Game
             Localisation.AddLocaleMappings(localeMappings);
         }
 
-        protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent) =>
+        protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
+        {
             dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
+
+            if (GamePersistence != null)
+                dependencies.CacheAs(GamePersistence);
+
+            return dependencies;
+        }
 
         public override void SetHost(GameHost host)
         {
