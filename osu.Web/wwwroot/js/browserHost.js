@@ -353,9 +353,10 @@ export function stopBrowserHost() {
     frameworkTextures.clear();
 }
 
-export function setRuleset(mode) {
+export function setRuleset(mode, keyboardCodes = []) {
     inputBridge?.reset();
     ruleset = mode;
+    rulesetKeys[mode] = new Set(keyboardCodes);
     releaseAllKeys("ruleset changed");
     if (dotnet) dotnet.invokeMethodAsync("ReportInput", `ruleset ${mode}`, pointer.x, pointer.y);
 }
