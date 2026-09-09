@@ -305,7 +305,7 @@
             fileStatus = $"{restoredFiles} browser files restored";
             osu.Framework.Game selectedGame;
             if (Original)
-                selectedGame = new OsuGame();
+                selectedGame = new BrowserOsuGame(persistence);
             else
                 selectedGame = game = new BrowserBootstrapGame(keyBindingStore, persistence);
             // Framework threads install their own SynchronizationContext. Blazor must
