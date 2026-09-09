@@ -16,6 +16,7 @@ using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Configuration;
+using osu.Game.Screens.Play;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Mania;
 using osu.Game.Rulesets.Taiko;
@@ -37,6 +38,7 @@ namespace osu.Web
         private readonly IGamePersistence persistence;
         private BrowserRulesetConfigCache? rulesetConfigCache;
         public DrawableRuleset? CurrentDrawableRuleset { get; private set; }
+        public GameplayClockContainer? GameplayClock { get; private set; }
         public long ActionPressCount { get; private set; }
         public long ActionReleaseCount { get; private set; }
         public string LastAction { get; private set; } = "none";
@@ -86,16 +88,22 @@ namespace osu.Web
             };
         });
 
-        public void LoadBeatmap(IBeatmap beatmap, Ruleset ruleset)
+        public void LoadBeatmap(IBeatmap beatmap, Ruleset ruleset, Track track)
         {
             ArgumentNullException.ThrowIfNull(beatmap);
             ArgumentNullException.ThrowIfNull(ruleset);
+            ArgumentNullException.ThrowIfNull(track);
 
             Schedule(() =>
             {
-                CurrentDrawableRuleset?.Expire();
+                GameplayClock?.Expire();
                 CurrentDrawableRuleset = ruleset.CreateDrawableRulesetWith(beatmap);
-                inputLayer.Child = CurrentDrawableRuleset;
+                GameplayClock = new GameplayClockContainer(track, applyOffsets: false, requireDecoupling: true)
+                {
+                    Child = CurrentDrawableRuleset,
+                };
+                inputLayer.Child = GameplayClock;
+                GameplayClock.Reset(0, startClock: true);
             });
         }
 
