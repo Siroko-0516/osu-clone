@@ -68,6 +68,12 @@
     <div>
         <label class="file-import">Import beatmap (.osz) <InputFile OnChange="ImportBeatmap" accept=".osz,application/zip" disabled="@importingBeatmap" /></label>
         <span>@beatmapImportStatus</span>
+        @if (selectedBeatmap is not null)
+        {
+            <button @onclick="() => game?.PauseGameplay()">Pause gameplay</button>
+            <button @onclick="() => game?.ResumeGameplay()">Resume gameplay</button>
+            <button @onclick="() => game?.RestartGameplay()">Restart gameplay</button>
+        }
         <button @onclick="StartAudioTest">Play 5-second framework audio test</button>
         <button @onclick="() => game?.AudioTestTrack?.Stop()">Pause audio test</button>
         <button @onclick="() => game?.AudioTestTrack?.Seek(2000)">Seek audio test to 2 seconds</button>
@@ -253,13 +259,21 @@
 
     private void StopSongPreview()
     {
-        if (songPreview is not null)
+        if (songPreview is null)
+            return;
+
+        if (game?.GameplaySession?.Track == songPreview)
+        {
+            // The gameplay session owns this track and disposes it on the update thread.
+            game.StopGameplay();
+        }
+        else
         {
             songPreview.Stop();
             songPreview.Dispose();
-            // This preview is owned by the page, so drain its disposal queue here.
             songPreview.Update();
         }
+
         songPreview = null;
     }
 
