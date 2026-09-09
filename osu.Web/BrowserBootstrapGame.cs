@@ -18,6 +18,7 @@ using osu.Game.Rulesets.Taiko;
 using osu.Game.Rulesets.Catch;
 using osu.Game.Rulesets.UI;
 using osu.Game.Resources;
+using osu.Game.Database.Persistence;
 using osuTK.Graphics;
 
 namespace osu.Web
@@ -29,16 +30,22 @@ namespace osu.Web
     public sealed class BrowserBootstrapGame : osu.Framework.Game
     {
         private readonly IKeyBindingSource bindingSource;
+        private readonly IGamePersistence persistence;
         public long ActionPressCount { get; private set; }
         public long ActionReleaseCount { get; private set; }
         public string LastAction { get; private set; } = "none";
 
-        public BrowserBootstrapGame(IKeyBindingSource bindingSource) => this.bindingSource = bindingSource;
+        public BrowserBootstrapGame(IKeyBindingSource bindingSource, IGamePersistence persistence)
+        {
+            this.bindingSource = bindingSource;
+            this.persistence = persistence;
+        }
 
         protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
         {
             var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
             dependencies.CacheAs(bindingSource);
+            dependencies.CacheAs(persistence);
             return dependencies;
         }
 
