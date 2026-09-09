@@ -651,6 +651,11 @@
                     await module.InvokeVoidAsync("applyFrameworkFrame", state);
                 }
                 gameFrameCount++;
+                if (!string.IsNullOrEmpty(game?.GameplayError)
+                    && !selectionStatus.StartsWith("Gameplay failed:", StringComparison.Ordinal))
+                {
+                    selectionStatus = "Gameplay failed: " + game.GameplayError;
+                }
             }
             catch (Exception exception)
             {
