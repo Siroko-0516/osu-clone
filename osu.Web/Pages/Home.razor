@@ -219,9 +219,10 @@
             string mode = difficulty.RulesetId switch { 0 => "osu", 1 => "taiko", 2 => "catch", 3 => "mania", _ => throw new InvalidDataException("Unsupported mode.") };
             if (mode == "mania") maniaKeys = (int)loaded.Difficulty.CircleSize;
             await SelectMode(mode);
+            game?.LoadBeatmap(loaded, CurrentRuleset);
             selectedDifficulty = difficulty;
             selectedBeatmap = loaded;
-            selectionStatus = $"Loaded {difficulty.DifficultyName}: {loaded.HitObjects.Count} objects using the original {RulesetLabel(difficulty.RulesetId)} ruleset. Gameplay rendering is not yet connected.";
+            selectionStatus = $"Loaded {difficulty.DifficultyName}: {loaded.HitObjects.Count} objects using the original {RulesetLabel(difficulty.RulesetId)} playfield.";
         }
         catch (Exception exception) { selectionStatus = "Could not load difficulty: " + exception.Message; }
     }
