@@ -37,8 +37,9 @@ namespace osu.Web
         private readonly IKeyBindingSource bindingSource;
         private readonly IGamePersistence persistence;
         private BrowserRulesetConfigCache? rulesetConfigCache;
-        public DrawableRuleset? CurrentDrawableRuleset { get; private set; }
-        public GameplayClockContainer? GameplayClock { get; private set; }
+        public BrowserGameplaySession? GameplaySession { get; private set; }
+        public DrawableRuleset? CurrentDrawableRuleset => GameplaySession?.DrawableRuleset;
+        public GameplayClockContainer? GameplayClock => GameplaySession?.Clock;
         public long ActionPressCount { get; private set; }
         public long ActionReleaseCount { get; private set; }
         public string LastAction { get; private set; } = "none";
@@ -96,16 +97,23 @@ namespace osu.Web
 
             Schedule(() =>
             {
-                GameplayClock?.Expire();
-                CurrentDrawableRuleset = ruleset.CreateDrawableRulesetWith(beatmap);
-                GameplayClock = new GameplayClockContainer(track, applyOffsets: false, requireDecoupling: true)
-                {
-                    Child = CurrentDrawableRuleset,
-                };
-                inputLayer.Child = GameplayClock;
-                GameplayClock.Reset(0, startClock: true);
+                GameplaySession?.Dispose();
+                GameplaySession = new BrowserGameplaySession(beatmap, ruleset, track);
+                inputLayer.Child = GameplaySession.Clock;
+                GameplaySession.Start();
             });
         }
+
+        public void PauseGameplay() => Schedule(() => GameplaySession?.Pause());
+        public void ResumeGameplay() => Schedule(() => GameplaySession?.Resume());
+        public void RestartGameplay() => Schedule(() => GameplaySession?.Restart());
+        public void SeekGameplay(double time) => Schedule(() => GameplaySession?.Seek(time));
+        public void StopGameplay() => Schedule(() =>
+        {
+            GameplaySession?.Dispose();
+            GameplaySession = null;
+            inputLayer.Clear();
+        });
 
         private Drawable createInputContainer<T>(osu.Game.Rulesets.Ruleset ruleset, int variant, string mode)
             where T : struct
