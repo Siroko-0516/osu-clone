@@ -25,6 +25,20 @@ public sealed class BrowserFileStore(IJSRuntime js) : IAsyncDisposable
         return entries.Length;
     }
 
+    public async Task PutAsync(IEnumerable<Entry> entries)
+    {
+        Entry[] snapshot = entries.ToArray();
+        foreach (Entry entry in snapshot)
+            validate(entry.Path);
+
+        await syncLock.WaitAsync();
+        try
+        {
+            await (await module.Value).InvokeAsync<int>("put", (object)snapshot);
+        }
+        finally { syncLock.Release(); }
+    }
+
     public async Task FlushAsync(FrameworkStorage storage)
     {
         await syncLock.WaitAsync();
