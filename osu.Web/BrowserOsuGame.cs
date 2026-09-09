@@ -1,23 +1,20 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using osu.Game;
 using osu.Game.Database.Persistence;
+using osu.Game.Input.Bindings;
 
 namespace osu.Web
 {
     /// <summary>
-    /// Original osu! game entry point with browser-owned persistence.
+    /// Browser game entry point. Browser services are added here without loading Realm,
+    /// whose native wrapper cannot execute in WebAssembly.
     /// </summary>
-    public sealed class BrowserOsuGame : OsuGame
+    public sealed class BrowserOsuGame : BrowserBootstrapGame
     {
-        private readonly IGamePersistence persistence;
-
-        protected override IGamePersistence GamePersistence => persistence;
-
-        public BrowserOsuGame(IGamePersistence persistence)
+        public BrowserOsuGame(IKeyBindingSource bindingSource, IGamePersistence persistence)
+            : base(bindingSource, persistence)
         {
-            this.persistence = persistence;
         }
     }
 }
