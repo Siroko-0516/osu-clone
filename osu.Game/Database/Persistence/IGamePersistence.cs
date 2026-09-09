@@ -3,6 +3,8 @@
 
 #nullable enable
 
+using osu.Game.Configuration;
+
 namespace osu.Game.Database.Persistence
 {
     /// <summary>
@@ -15,6 +17,8 @@ namespace osu.Game.Database.Persistence
     public interface IGamePersistence
     {
         IRecordStore Records { get; }
+
+        SettingsStore RulesetSettings { get; }
 
         BeatmapCatalogStore Beatmaps { get; }
 
