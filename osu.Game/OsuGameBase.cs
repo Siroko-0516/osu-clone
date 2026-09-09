@@ -320,7 +320,7 @@ namespace osu.Game
 
             Audio.Samples.PlaybackConcurrency = SAMPLE_CONCURRENCY;
 
-            dependencies.Cache(SkinManager = new SkinManager(Storage, realm, Host, Resources, Audio, Scheduler));
+            dependencies.Cache(SkinManager = CreateSkinManager(realm));
             dependencies.CacheAs<ISkinSource>(SkinManager);
 
             EndpointConfiguration endpoints = CreateEndpoints();
@@ -343,9 +343,9 @@ namespace osu.Game
             dependencies.Cache(difficultyCache = new BeatmapDifficultyCache());
 
             // ordering is important here to ensure foreign keys rules are not broken in ModelStore.Cleanup()
-            dependencies.Cache(ScoreManager = new ScoreManager(RulesetStore, () => BeatmapManager, Storage, realm, API, LocalConfig));
+            dependencies.Cache(ScoreManager = CreateScoreManager(realm));
 
-            dependencies.Cache(BeatmapManager = new BeatmapManager(Storage, realm, API, Audio, Resources, Host, defaultBeatmap, difficultyCache, performOnlineLookups: true));
+            dependencies.Cache(BeatmapManager = CreateBeatmapManager(realm, defaultBeatmap));
             dependencies.CacheAs<IWorkingBeatmapCache>(BeatmapManager);
 
             dependencies.Cache(BeatmapDownloader = new BeatmapModelDownloader(BeatmapManager, API));
@@ -445,7 +445,7 @@ namespace osu.Game
             base.Content.Add(new TouchInputInterceptor());
             base.Content.Add(hitErrorTracker);
 
-            KeyBindingStore = new RealmKeyBindingStore(realm, keyCombinationProvider);
+            KeyBindingStore = CreateKeyBindingStore(realm, keyCombinationProvider);
             KeyBindingStore.Register(globalBindings, RulesetStore.AvailableRulesets);
             dependencies.Cache(KeyBindingStore);
 
@@ -664,6 +664,31 @@ namespace osu.Game
                 realmBlocker?.Dispose();
             }
         }
+
+        /// <summary>
+        /// Creates the skin service used by this host. Platform ports may override this to avoid
+        /// coupling their storage implementation to Realm.
+        /// </summary>
+        protected virtual SkinManager CreateSkinManager(RealmAccess realmAccess) =>
+            new SkinManager(Storage, realmAccess, Host, Resources, Audio, Scheduler);
+
+        /// <summary>
+        /// Creates the score service used by this host.
+        /// </summary>
+        protected virtual ScoreManager CreateScoreManager(RealmAccess realmAccess) =>
+            new ScoreManager(RulesetStore, () => BeatmapManager, Storage, realmAccess, API, LocalConfig);
+
+        /// <summary>
+        /// Creates the beatmap service used by this host.
+        /// </summary>
+        protected virtual BeatmapManager CreateBeatmapManager(RealmAccess realmAccess, WorkingBeatmap defaultBeatmap) =>
+            new BeatmapManager(Storage, realmAccess, API, Audio, Resources, Host, defaultBeatmap, difficultyCache, performOnlineLookups: true);
+
+        /// <summary>
+        /// Creates the key binding service used by this host.
+        /// </summary>
+        protected virtual RealmKeyBindingStore CreateKeyBindingStore(RealmAccess realmAccess, ReadableKeyCombinationProvider keyCombinationProvider) =>
+            new RealmKeyBindingStore(realmAccess, keyCombinationProvider);
 
         protected virtual IBeatmapUpdater CreateBeatmapUpdater() => new BeatmapUpdater(BeatmapManager, difficultyCache, API, Storage);
 
