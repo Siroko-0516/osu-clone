@@ -27,7 +27,7 @@ namespace osu.Web
     /// Realm-free diagnostic runtime used only while the real OsuGame services are ported.
     /// This must never be presented as the original osu! user interface.
     /// </summary>
-    public sealed class BrowserBootstrapGame : osu.Framework.Game
+    public class BrowserBootstrapGame : osu.Framework.Game
     {
         private readonly IKeyBindingSource bindingSource;
         private readonly IGamePersistence persistence;
