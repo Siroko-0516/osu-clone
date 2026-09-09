@@ -40,6 +40,7 @@ namespace osu.Web
         public BrowserGameplaySession? GameplaySession { get; private set; }
         public DrawableRuleset? CurrentDrawableRuleset => GameplaySession?.DrawableRuleset;
         public GameplayClockContainer? GameplayClock => GameplaySession?.Clock;
+        public string GameplayError { get; private set; } = string.Empty;
         public long ActionPressCount { get; private set; }
         public long ActionReleaseCount { get; private set; }
         public string LastAction { get; private set; } = "none";
@@ -97,10 +98,21 @@ namespace osu.Web
 
             Schedule(() =>
             {
-                GameplaySession?.Dispose();
-                GameplaySession = new BrowserGameplaySession(beatmap, ruleset, track);
-                inputLayer.Child = GameplaySession.Clock;
-                GameplaySession.Start();
+                try
+                {
+                    GameplayError = string.Empty;
+                    GameplaySession?.Dispose();
+                    GameplaySession = new BrowserGameplaySession(beatmap, ruleset, track);
+                    inputLayer.Child = GameplaySession.Clock;
+                    GameplaySession.Start();
+                }
+                catch (Exception exception)
+                {
+                    GameplaySession?.Dispose();
+                    GameplaySession = null;
+                    GameplayError = formatException(exception);
+                    inputLayer.Clear();
+                }
             });
         }
 
@@ -114,6 +126,14 @@ namespace osu.Web
             GameplaySession = null;
             inputLayer.Clear();
         });
+
+        private static string formatException(Exception exception)
+        {
+            var messages = new List<string>();
+            for (Exception? current = exception; current is not null; current = current.InnerException)
+                messages.Add($"{current.GetType().Name}: {current.Message}");
+            return string.Join(" → ", messages);
+        }
 
         private Drawable createInputContainer<T>(osu.Game.Rulesets.Ruleset ruleset, int variant, string mode)
             where T : struct
