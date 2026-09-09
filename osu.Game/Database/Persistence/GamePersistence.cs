@@ -16,16 +16,28 @@ namespace osu.Game.Database.Persistence
 
         public BeatmapCatalogStore Beatmaps { get; }
 
-        private GamePersistence(IRecordStore records, BeatmapCatalogStore beatmaps)
+        public GameCollectionStore<SkinSnapshot> Skins { get; }
+
+        public GameCollectionStore<ScoreSnapshot> Scores { get; }
+
+        private GamePersistence(
+            IRecordStore records,
+            BeatmapCatalogStore beatmaps,
+            GameCollectionStore<SkinSnapshot> skins,
+            GameCollectionStore<ScoreSnapshot> scores)
         {
             Records = records;
             Beatmaps = beatmaps;
+            Skins = skins;
+            Scores = scores;
         }
 
         public static async Task<GamePersistence> CreateAsync(IRecordStore records)
         {
             var beatmaps = await BeatmapCatalogStore.CreateAsync(records).ConfigureAwait(false);
-            return new GamePersistence(records, beatmaps);
+            var skins = await GameCollectionStore<SkinSnapshot>.CreateAsync(records, "skins").ConfigureAwait(false);
+            var scores = await GameCollectionStore<ScoreSnapshot>.CreateAsync(records, "scores").ConfigureAwait(false);
+            return new GamePersistence(records, beatmaps, skins, scores);
         }
     }
 }
