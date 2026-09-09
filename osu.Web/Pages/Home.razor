@@ -76,6 +76,56 @@
         <button @onclick="() => SetActionKeys(false)">Restore Z / X action defaults</button>
     </div>
 
+    <section class="song-library" aria-label="Imported songs">
+        <h2>Your songs</h2>
+        <label>Search songs <input @bind="songSearch" @bind:event="oninput" placeholder="Title, artist or mapper" /></label>
+        @if (beatmapCatalog is null || beatmapLoader is null)
+        {
+            <p>Loading your library…</p>
+        }
+        else if (beatmapCatalog.Sets.Count == 0)
+        {
+            <p>Import an .osz file to add your first song. Songs stay in this browser.</p>
+        }
+        else
+        {
+            @foreach (var set in VisibleSets)
+            {
+                <article @key="set.Id">
+                    <h3>@set.Artist — @set.Title</h3>
+                    <p>Mapped by @set.Creator</p>
+                    <div class="difficulty-list">
+                        @foreach (var difficulty in beatmapCatalog.GetBeatmaps(set.Id))
+                        {
+                            <button @key="difficulty.Id" class="@(selectedDifficulty?.Id == difficulty.Id ? "active" : null)"
+                                    aria-pressed="@(selectedDifficulty?.Id == difficulty.Id)" disabled="@importingBeatmap"
+                                    @onclick="() => SelectDifficulty(difficulty)">
+                                @difficulty.DifficultyName · @RulesetLabel(difficulty.RulesetId)
+                            </button>
+                        }
+                    </div>
+                </article>
+            }
+            @if (!VisibleSets.Any())
+            {
+                <p>No matching songs.</p>
+            }
+        }
+        <p role="status">@selectionStatus</p>
+        @if (songPreview is not null && songPreview.LoadError.Length > 0)
+        {
+            <p role="alert">Could not preview audio: @songPreview.LoadError</p>
+        }
+        @if (selectedBeatmap is not null)
+        {
+            <div class="song-preview">
+                <button @onclick="PreviewSong">Preview music</button>
+                <button @onclick="StopSongPreview">Stop preview</button>
+                <span>@selectedBeatmap.HitObjects.Count objects · CS @selectedBeatmap.Difficulty.CircleSize · OD @selectedBeatmap.Difficulty.OverallDifficulty</span>
+            </div>
+        }
+    </section>
+
     <dl>
         <div><dt>Original ruleset settings test</dt><dd>
             <label><input type="checkbox" disabled="@(osuConfig is null || settingsSaving)" checked="@(osuConfig?.Get<bool>(OsuRulesetSetting.SnakingInSliders) ?? true)" @onchange="SetSnaking" /> Snaking-in sliders</label>
@@ -142,6 +192,67 @@
     private string beatmapCatalogStatus = "Loading browser beatmap metadata";
     private string beatmapImportStatus = "No beatmap imported";
     private bool importingBeatmap;
+    private BrowserBeatmapLoader? beatmapLoader;
+    private osu.Game.Database.Persistence.BeatmapSnapshot? selectedDifficulty;
+    private osu.Game.Beatmaps.IBeatmap? selectedBeatmap;
+    private WebAudioTrack? songPreview;
+    private string songSearch = "";
+    private string selectionStatus = "Select a difficulty to load it. Gameplay rendering is still being ported.";
+    private IEnumerable<osu.Game.Database.Persistence.BeatmapSetSnapshot> VisibleSets =>
+        (beatmapCatalog?.Sets ?? Array.Empty<osu.Game.Database.Persistence.BeatmapSetSnapshot>())
+        .Where(set => string.IsNullOrWhiteSpace(songSearch) || $"{set.Artist} {set.Title} {set.Creator}".Contains(songSearch.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private static string RulesetLabel(int mode) => mode switch
+    {
+        0 => "osu!standard", 1 => "osu!taiko", 2 => "osu!catch", 3 => "osu!mania", _ => "Unknown mode"
+    };
+
+    private async Task SelectDifficulty(osu.Game.Database.Persistence.BeatmapSnapshot difficulty)
+    {
+        StopSongPreview();
+        selectedDifficulty = null;
+        selectedBeatmap = null;
+        try
+        {
+            if (beatmapLoader is null) return;
+            var loaded = beatmapLoader.Load(difficulty.Id);
+            string mode = difficulty.RulesetId switch { 0 => "osu", 1 => "taiko", 2 => "catch", 3 => "mania", _ => throw new InvalidDataException("Unsupported mode.") };
+            if (mode == "mania") maniaKeys = (int)loaded.Difficulty.CircleSize;
+            await SelectMode(mode);
+            selectedDifficulty = difficulty;
+            selectedBeatmap = loaded;
+            selectionStatus = $"Loaded {difficulty.DifficultyName}: {loaded.HitObjects.Count} objects using the original {RulesetLabel(difficulty.RulesetId)} ruleset. Gameplay rendering is not yet connected.";
+        }
+        catch (Exception exception) { selectionStatus = "Could not load difficulty: " + exception.Message; }
+    }
+
+    private void PreviewSong()
+    {
+        if (selectedDifficulty is null || selectedBeatmap is null || persistentStorage is null || audioModule is null) return;
+        try
+        {
+            StopSongPreview();
+            game?.AudioTestTrack?.Stop();
+            audioModule.InvokeVoid("unlockAudio");
+            songPreview = new WebAudioTrack(audioModule, persistentStorage.GetStream(selectedDifficulty.AudioPath), selectedDifficulty.AudioPath);
+            songPreview.Seek(Math.Max(0, selectedBeatmap.Metadata.PreviewTime));
+            songPreview.Start();
+        }
+        catch (Exception exception) { StopSongPreview(); selectionStatus = "Preview failed: " + exception.Message; }
+    }
+
+    private void StopSongPreview()
+    {
+        if (songPreview is not null)
+        {
+            songPreview.Stop();
+            songPreview.Dispose();
+            // This preview is owned by the page, so drain its disposal queue here.
+            songPreview.Update();
+        }
+        songPreview = null;
+    }
+
     private bool bindingsSaving;
     private List<BindingEditorRow> bindingRows = new();
     private static readonly osu.Framework.Input.Bindings.InputKey[] selectableKeys = Enum.GetValues<osu.Framework.Input.Bindings.InputKey>()
@@ -303,6 +414,7 @@
             fileStore = new BrowserFileStore(JS);
             int restoredFiles = await fileStore.HydrateAsync(persistentStorage);
             fileStatus = $"{restoredFiles} browser files restored";
+            beatmapLoader = new BrowserBeatmapLoader(beatmapCatalog, path => persistentStorage.GetStream(path, FileAccess.Read, FileMode.Open));
             osu.Framework.Game selectedGame;
             if (Original)
                 selectedGame = new BrowserOsuGame(persistence);
@@ -351,6 +463,7 @@
 
     private async Task StartAudioTest()
     {
+        StopSongPreview();
         audioModule?.InvokeVoid("unlockAudio");
         game?.StartAudioTest();
         await FlushFiles();
@@ -366,7 +479,15 @@
         try
         {
             await using Stream stream = args.File.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024);
-            var package = osu.Game.Database.Persistence.OszArchiveReader.Read(stream);
+            // InputFile streams do not support synchronous reads or seeking, which ZipArchive needs.
+            using var archiveBytes = new MemoryStream();
+            await stream.CopyToAsync(archiveBytes);
+            archiveBytes.Position = 0;
+            var package = osu.Game.Database.Persistence.OszArchiveReader.Read(archiveBytes);
+            StopSongPreview();
+            selectedDifficulty = null;
+            selectedBeatmap = null;
+            selectionStatus = "Select a difficulty to load it.";
             foreach (var file in package.Files)
             {
                 using Stream output = persistentStorage.GetStream(file.Path, FileAccess.Write, FileMode.Create);
@@ -489,6 +610,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        StopSongPreview();
+        beatmapLoader?.Dispose();
         foreach (var config in rulesetConfigs) config.Dispose();
         if (settingsStore is not null)
         {
@@ -526,4 +649,3 @@
         }
     }
 }
-

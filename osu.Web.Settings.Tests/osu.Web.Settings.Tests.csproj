@@ -12,5 +12,6 @@
     <ProjectReference Include="../osu.Game.Rulesets.Catch/osu.Game.Rulesets.Catch.csproj" />
     <Compile Include="../osu.Web/Storage/BrowserSettingsStore.cs" Link="BrowserSettingsStore.cs" />
     <Compile Include="../osu.Web/Storage/BrowserKeyBindingStore.cs" Link="BrowserKeyBindingStore.cs" />
+    <Compile Include="../osu.Web/Storage/BrowserBeatmapLoader.cs" Link="BrowserBeatmapLoader.cs" />
   </ItemGroup>
 </Project>

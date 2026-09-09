@@ -1,0 +1,11 @@
+.song-library { width: min(92vw, 960px); padding: 20px; border: 1px solid #ffffff25; border-radius: 14px; background: #130e1bea; }
+.song-library h2 { margin: 0 0 16px; }
+.song-library input { width: min(100%, 420px); padding: 10px; margin: 8px; border: 1px solid #ffffff40; border-radius: 8px; background: #211827; color: white; }
+.song-library article { border-top: 1px solid #ffffff20; padding: 12px 0; }
+.song-library h3 { margin: 8px 0; }
+.song-library p { color: #c6bdcc; }
+.difficulty-list, .song-preview { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.song-library button { padding: 10px 14px; border: 1px solid #ffffff35; border-radius: 8px; color: white; background: #302137; cursor: pointer; }
+.song-library button.active { background: #aa3169; border-color: #ff9dc9; }
+.song-library button:focus-visible, .song-library input:focus-visible { outline: 2px solid #69d8ff; outline-offset: 3px; }
+.song-library button:disabled { opacity: .5; cursor: wait; }

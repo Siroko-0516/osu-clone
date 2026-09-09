@@ -231,7 +231,7 @@ namespace osu.Game.Beatmaps
         {
             lock (beatmapFetchLock)
             {
-                return beatmapLoadTask ??= Task.Factory.StartNew(() =>
+                IBeatmap load()
                 {
                     // Todo: Handle cancellation during beatmap parsing
                     var b = GetBeatmap() ?? new Beatmap();
@@ -250,7 +250,27 @@ namespace osu.Game.Beatmaps
                     b.BeatmapInfo.StarRating = BeatmapInfo.StarRating; // this could be recomputed in the decoding process but it's a bit annoying to do.
 
                     return b;
-                }, loadCancellationSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                }
+
+                if (beatmapLoadTask != null)
+                    return beatmapLoadTask;
+
+                // Browser WebAssembly cannot create a dedicated LongRunning thread or
+                // synchronously wait for work queued to its own event loop.
+                if (OperatingSystem.IsBrowser())
+                {
+                    try
+                    {
+                        loadCancellationSource.Token.ThrowIfCancellationRequested();
+                        return beatmapLoadTask = Task.FromResult(load());
+                    }
+                    catch (Exception exception)
+                    {
+                        return beatmapLoadTask = Task.FromException<IBeatmap>(exception);
+                    }
+                }
+
+                return beatmapLoadTask = Task.Factory.StartNew(load, loadCancellationSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             }
         }
 

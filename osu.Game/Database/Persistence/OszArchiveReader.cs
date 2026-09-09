@@ -24,6 +24,7 @@ namespace osu.Game.Database.Persistence
         {
             using var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true);
             var files = new List<OszFile>(archive.Entries.Count);
+            var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             long totalSize = 0;
 
             foreach (ZipArchiveEntry entry in archive.Entries)
@@ -34,6 +35,8 @@ namespace osu.Game.Database.Persistence
                     throw new InvalidDataException($"Beatmap archive contains more than {MAX_FILES} files.");
 
                 string path = normalisePath(entry.FullName);
+                if (!paths.Add(path))
+                    throw new InvalidDataException($"Beatmap archive contains duplicate resource path '{path}'.");
                 totalSize = checked(totalSize + entry.Length);
                 if (totalSize > MAX_UNCOMPRESSED_SIZE)
                     throw new InvalidDataException("Beatmap archive is too large after decompression.");
@@ -62,17 +65,17 @@ namespace osu.Game.Database.Persistence
             var set = new BeatmapSetSnapshot(setId, first.Artist, first.Title, first.Creator, root);
             var difficulties = parsed.Select(map => new BeatmapSnapshot(
                 map.BeatmapId > 0 ? map.BeatmapId.ToString(CultureInfo.InvariantCulture) : hashText(setId + "\0" + map.Path),
-                setId, map.Version, map.Mode, 0, $"{root}/{map.Path}", $"{root}/{resolveRelativePath(map.Path, map.AudioFilename)}"))
+                setId, map.Version, map.Mode, 0, $"{root}/{map.Path}", $"{root}/{audioPath(map)}"))
                                      .ToArray();
 
-            foreach (BeatmapSnapshot difficulty in difficulties)
-            {
-                string relativeAudioPath = difficulty.AudioPath[(root.Length + 1)..];
-                if (!files.Any(file => file.Path.Equals(relativeAudioPath, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidDataException($"Difficulty '{difficulty.DifficultyName}' references missing audio '{relativeAudioPath}'.");
-            }
-
             return new OszImportPackage(set, difficulties, files.Select(file => new OszFile($"{root}/{file.Path}", file.Data)).ToArray());
+
+            string audioPath(ParsedBeatmap map)
+            {
+                string requested = resolveRelativePath(map.Path, map.AudioFilename);
+                return files.SingleOrDefault(file => file.Path.Equals(requested, StringComparison.OrdinalIgnoreCase))?.Path
+                       ?? throw new InvalidDataException($"Difficulty '{map.Version}' references missing audio '{requested}'.");
+            }
         }
 
         private static ParsedBeatmap parseBeatmap(OszFile file)

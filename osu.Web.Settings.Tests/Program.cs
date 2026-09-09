@@ -150,6 +150,7 @@ static class Program
         try { OszArchiveReader.Read(unsafeOsz); throw new Exception("Expected unsafe archive path rejection."); }
         catch (InvalidDataException) { }
         Console.WriteLine("PASS .osz metadata parsing, resource namespacing and traversal rejection");
+        await BeatmapLoadingChecks.Run().ConfigureAwait(false);
     }
 }
 

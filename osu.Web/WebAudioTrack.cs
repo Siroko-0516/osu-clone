@@ -26,6 +26,7 @@ public sealed class WebAudioTrack : Track
 
     private State ReadState() => module.Invoke<State>("trackState", id);
     public override bool IsDummyDevice => false;
+    public string LoadError => IsDisposed ? string.Empty : ReadState().Error;
     public override bool IsLoaded => !IsDisposed && ReadState().Loaded;
     public override bool IsRunning => !IsDisposed && ReadState().Running;
     public override double CurrentTime => IsDisposed ? 0 : ReadState().Position;
