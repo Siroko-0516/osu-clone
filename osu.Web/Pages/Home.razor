@@ -214,12 +214,14 @@
         selectedBeatmap = null;
         try
         {
-            if (beatmapLoader is null) return;
+            if (beatmapLoader is null || persistentStorage is null || audioModule is null) return;
             var loaded = beatmapLoader.Load(difficulty.Id);
             string mode = difficulty.RulesetId switch { 0 => "osu", 1 => "taiko", 2 => "catch", 3 => "mania", _ => throw new InvalidDataException("Unsupported mode.") };
             if (mode == "mania") maniaKeys = (int)loaded.Difficulty.CircleSize;
             await SelectMode(mode);
-            game?.LoadBeatmap(loaded, CurrentRuleset);
+            audioModule.InvokeVoid("unlockAudio");
+            songPreview = new WebAudioTrack(audioModule, persistentStorage.GetStream(difficulty.AudioPath), difficulty.AudioPath);
+            game?.LoadBeatmap(loaded, CurrentRuleset, songPreview);
             selectedDifficulty = difficulty;
             selectedBeatmap = loaded;
             selectionStatus = $"Loaded {difficulty.DifficultyName}: {loaded.HitObjects.Count} objects using the original {RulesetLabel(difficulty.RulesetId)} playfield.";
@@ -232,12 +234,19 @@
         if (selectedDifficulty is null || selectedBeatmap is null || persistentStorage is null || audioModule is null) return;
         try
         {
-            StopSongPreview();
             game?.AudioTestTrack?.Stop();
             audioModule.InvokeVoid("unlockAudio");
-            songPreview = new WebAudioTrack(audioModule, persistentStorage.GetStream(selectedDifficulty.AudioPath), selectedDifficulty.AudioPath);
-            songPreview.Seek(Math.Max(0, selectedBeatmap.Metadata.PreviewTime));
-            songPreview.Start();
+            double previewTime = Math.Max(0, selectedBeatmap.Metadata.PreviewTime);
+            if (game?.GameplayClock is not null)
+            {
+                game.GameplayClock.Seek(previewTime);
+                game.GameplayClock.Start();
+            }
+            else
+            {
+                songPreview.Seek(previewTime);
+                songPreview.Start();
+            }
         }
         catch (Exception exception) { StopSongPreview(); selectionStatus = "Preview failed: " + exception.Message; }
     }
