@@ -370,7 +370,7 @@ namespace osu.Game
             dependencies.Cache(beatmapCache = new BeatmapLookupCache());
             base.Content.Add(beatmapCache);
 
-            dependencies.CacheAs<IRulesetConfigCache>(rulesetConfigCache = new RulesetConfigCache(realm, RulesetStore));
+            dependencies.CacheAs<IRulesetConfigCache>(rulesetConfigCache = new RulesetConfigCache(RulesetStore, GamePersistence?.RulesetSettings ?? new SettingsStore(realm)));
 
             var powerStatus = CreateBatteryInfo();
             if (powerStatus != null)
