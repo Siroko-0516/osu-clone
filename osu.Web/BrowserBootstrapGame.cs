@@ -12,6 +12,10 @@ using osu.Framework.Audio.Sample;
 using osu.Framework.IO.Stores;
 using osu.Framework.Input.Bindings;
 using osu.Game.Input.Bindings;
+using osu.Game.Beatmaps;
+using osu.Game.Configuration;
+using osu.Game.Rulesets;
+using osu.Game.Rulesets.Configuration;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Mania;
 using osu.Game.Rulesets.Taiko;
@@ -31,6 +35,8 @@ namespace osu.Web
     {
         private readonly IKeyBindingSource bindingSource;
         private readonly IGamePersistence persistence;
+        private BrowserRulesetConfigCache? rulesetConfigCache;
+        public DrawableRuleset? CurrentDrawableRuleset { get; private set; }
         public long ActionPressCount { get; private set; }
         public long ActionReleaseCount { get; private set; }
         public string LastAction { get; private set; } = "none";
@@ -46,6 +52,8 @@ namespace osu.Web
             var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
             dependencies.CacheAs(bindingSource);
             dependencies.CacheAs(persistence);
+            dependencies.CacheAs<IRulesetConfigCache>(rulesetConfigCache = new BrowserRulesetConfigCache(persistence.RulesetSettings));
+            dependencies.Cache(new OsuConfigManager(Host.Storage));
             return dependencies;
         }
 
@@ -77,6 +85,19 @@ namespace osu.Web
                 _ => createInputContainer<OsuAction>(new OsuRuleset(), 0, "osu")
             };
         });
+
+        public void LoadBeatmap(IBeatmap beatmap, Ruleset ruleset)
+        {
+            ArgumentNullException.ThrowIfNull(beatmap);
+            ArgumentNullException.ThrowIfNull(ruleset);
+
+            Schedule(() =>
+            {
+                CurrentDrawableRuleset?.Expire();
+                CurrentDrawableRuleset = ruleset.CreateDrawableRulesetWith(beatmap);
+                inputLayer.Child = CurrentDrawableRuleset;
+            });
+        }
 
         private Drawable createInputContainer<T>(osu.Game.Rulesets.Ruleset ruleset, int variant, string mode)
             where T : struct
