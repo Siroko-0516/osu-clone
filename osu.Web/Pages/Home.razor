@@ -137,6 +137,7 @@
     private BrowserFileStore? fileStore;
     private osu.Framework.Platform.Storage? persistentStorage;
     private string fileStatus = "Loading browser files";
+    private osu.Game.Database.Persistence.IGamePersistence? persistence;
     private osu.Game.Database.Persistence.BeatmapCatalogStore? beatmapCatalog;
     private string beatmapCatalogStatus = "Loading browser beatmap metadata";
     private string beatmapImportStatus = "No beatmap imported";
@@ -267,7 +268,8 @@
         {
             settingsStore = await BrowserSettingsStore.CreateAsync(Records);
             keyBindingStore = await BrowserKeyBindingStore.CreateAsync(Records);
-            beatmapCatalog = await osu.Game.Database.Persistence.BeatmapCatalogStore.CreateAsync(Records);
+            persistence = await osu.Game.Database.Persistence.GamePersistence.CreateAsync(Records);
+            beatmapCatalog = persistence.Beatmaps;
             beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             keyBindingStatus = "Browser key bindings loaded";
             LoadBindingEditor();
@@ -305,7 +307,7 @@
             if (Original)
                 selectedGame = new OsuGame();
             else
-                selectedGame = game = new BrowserBootstrapGame(keyBindingStore);
+                selectedGame = game = new BrowserBootstrapGame(keyBindingStore, persistence);
             // Framework threads install their own SynchronizationContext. Blazor must
             // regain its context before awaiting JS interop or dispatching UI work.
             var browserContext = System.Threading.SynchronizationContext.Current;
