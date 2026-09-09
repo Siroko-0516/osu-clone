@@ -494,7 +494,13 @@
                 await output.WriteAsync(file.Data);
             }
 
-            await fileStore.FlushAsync(persistentStorage);
+            // Persist only the imported archive entries. Re-snapshotting every browser file
+            // on each import multiplies peak memory use for large beatmap libraries.
+            await fileStore.PutAsync(package.Files.Select(file => new BrowserFileStore.Entry
+            {
+                Path = file.Path,
+                Data = file.Data,
+            }));
             await beatmapCatalog.SaveSetAsync(package.Set, package.Beatmaps);
             beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             beatmapImportStatus = $"Imported {package.Set.Artist} — {package.Set.Title} ({package.Beatmaps.Count} difficulties)";
