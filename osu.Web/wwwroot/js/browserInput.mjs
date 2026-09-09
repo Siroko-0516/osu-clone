@@ -60,7 +60,7 @@ export function attachBrowserInput(canvas) {
     listen(canvas, 'lostpointercapture', releaseButtons);
     listen(window, 'pointercancel', event => { if (event.pointerId === pointerId) releaseButtons(); });
     listen(canvas, 'contextmenu', event => event.preventDefault());
-    const isTextEntry = target => target instanceof Element
+    const isTextEntry = target => typeof target?.matches === 'function'
         && (target.matches('input, textarea, select') || target.isContentEditable);
     listen(window, 'keydown', event => {
         if (isTextEntry(event.target)) return;
