@@ -268,7 +268,7 @@
         {
             settingsStore = await BrowserSettingsStore.CreateAsync(Records);
             keyBindingStore = await BrowserKeyBindingStore.CreateAsync(Records);
-            persistence = await osu.Game.Database.Persistence.GamePersistence.CreateAsync(Records);
+            persistence = await osu.Game.Database.Persistence.GamePersistence.CreateAsync(Records, settingsStore);
             beatmapCatalog = persistence.Beatmaps;
             beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             keyBindingStatus = "Browser key bindings loaded";
