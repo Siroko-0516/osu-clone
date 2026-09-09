@@ -20,9 +20,9 @@
         <div class="ring" aria-hidden="true"><span>web</span></div>
         <div>
             <p class="phase">BROWSER PORT · RENDERER PHASE</p>
-            <h1>@(Original ? "Original OsuGame startup probe." : "Framework renderer diagnostics.")</h1>
-            <p class="lede">@(Original ? "This attempts the original game startup and reports the first blocking error. Successful gameplay is not yet verified." : "This tests the browser renderer only. The original OsuGame and its main menu are not running yet.")</p>
-            <button @onclick="SwitchRuntime">@(Original ? "Open framework diagnostics" : "Attempt original OsuGame startup")</button>
+            <h1>@(Original ? "osu! browser gameplay runtime." : "Framework renderer diagnostics.")</h1>
+            <p class="lede">@(Original ? "Realm-free browser services now load original ruleset playfields, controls and local songs." : "This view isolates the renderer and input bridge for diagnostics.")</p>
+            <button @onclick="SwitchRuntime">@(Original ? "Open framework diagnostics" : "Open browser gameplay runtime")</button>
         </div>
     </header>
 
@@ -44,7 +44,7 @@
         </nav>
     }
 
-    @if (!Original && bindingRows.Count > 0)
+    @if (bindingRows.Count > 0)
     {
         <section class="binding-editor" aria-label="Current ruleset key bindings">
             <div class="binding-title"><strong>@BindingEditorTitle key bindings</strong><button @onclick="ResetCurrentBindings">Restore defaults</button></div>
@@ -61,7 +61,7 @@
     }
 
     <section class="canvas-panel">
-        <canvas @ref="canvas" tabindex="0" aria-label="osu browser WebGL host diagnostic canvas"></canvas>
+        <canvas @ref="canvas" tabindex="0" aria-label="osu browser game canvas"></canvas>
         <div class="canvas-hint">@ModeInputHint</div>
     </section>
 
