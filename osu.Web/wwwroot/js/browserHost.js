@@ -271,7 +271,10 @@ export async function startBrowserHost(target, dotnetReference) {
     });
     // Track physical key state ourselves. Browser key-repeat has a platform-defined delay
     // and is unsuitable for rhythm input; a Set also preserves simultaneous key presses.
-    listen(canvas, "keydown", event => {
+    listen(window, "keydown", event => {
+        const target = event.target;
+        if (typeof target?.matches === "function"
+            && (target.matches("input, textarea, select") || target.isContentEditable)) return;
         if (!rulesetKeys[ruleset]?.has(event.code)) return;
         event.preventDefault();
         if (event.repeat || keys.has(event.code)) return;
