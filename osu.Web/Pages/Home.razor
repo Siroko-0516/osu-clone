@@ -360,6 +360,7 @@
         var ruleset = CurrentRuleset;
         await keyBindingStore.SaveBindingsAsync(ruleset.RulesetInfo.ShortName, CurrentVariant, ruleset.GetDefaultKeyBindings(CurrentVariant));
         LoadBindingEditor();
+        await SyncBrowserBindings();
         keyBindingStatus = $"{BindingEditorTitle} defaults restored";
     }
 
@@ -373,6 +374,7 @@
                 new osu.Framework.Input.Bindings.KeyCombination(binding.KeyCombination.Keys.Select(key => useA && key == osu.Framework.Input.Bindings.InputKey.Z ? osu.Framework.Input.Bindings.InputKey.A : key).ToArray()), binding.Action));
             await keyBindingStore.SaveBindingsAsync(ruleset.RulesetInfo.ShortName, 0, bindings);
             LoadBindingEditor();
+            await SyncBrowserBindings();
             keyBindingStatus = useA ? "A / X saved" : "Z / X defaults saved";
         }
         catch (Exception exception) { keyBindingStatus = "Save failed: " + exception.Message; }
@@ -472,17 +474,58 @@
         game?.SetRuleset(mode, mode == "mania" ? maniaKeys : 0);
         LoadBindingEditor();
         keyBindingStatus = $"{BindingEditorTitle} bindings loaded";
-        if (module is not null)
-            await module.InvokeVoidAsync("setRuleset", mode);
+        await SyncBrowserBindings();
     }
 
-    private Task SelectManiaKeys(int keys)
+    private async Task SelectManiaKeys(int keys)
     {
         maniaKeys = Math.Clamp(keys, 1, 9);
         game?.SetRuleset("mania", maniaKeys);
         LoadBindingEditor();
+        await SyncBrowserBindings();
         keyBindingStatus = $"mania {maniaKeys}K bindings loaded";
-        return InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SyncBrowserBindings()
+    {
+        if (module is null)
+            return;
+
+        string[] codes = bindingRows.Select(row => ToBrowserCode(row.Key))
+                                    .Where(code => code is not null)
+                                    .Cast<string>()
+                                    .Distinct(StringComparer.Ordinal)
+                                    .ToArray();
+        await module.InvokeVoidAsync("setRuleset", selectedMode, (object)codes);
+    }
+
+    private static string? ToBrowserCode(osu.Framework.Input.Bindings.InputKey key)
+    {
+        string name = key.ToString();
+        if (name.Length == 1 && name[0] is >= 'A' and <= 'Z')
+            return "Key" + name;
+        if (name.StartsWith("Number", StringComparison.Ordinal) && name.Length == 7)
+            return "Digit" + name[6];
+        if (name.StartsWith("Keypad", StringComparison.Ordinal))
+            return "Numpad" + name[6..];
+
+        return key switch
+        {
+            osu.Framework.Input.Bindings.InputKey.Left => "ArrowLeft",
+            osu.Framework.Input.Bindings.InputKey.Right => "ArrowRight",
+            osu.Framework.Input.Bindings.InputKey.Up => "ArrowUp",
+            osu.Framework.Input.Bindings.InputKey.Down => "ArrowDown",
+            osu.Framework.Input.Bindings.InputKey.Shift => "ShiftLeft",
+            osu.Framework.Input.Bindings.InputKey.Control => "ControlLeft",
+            osu.Framework.Input.Bindings.InputKey.Alt => "AltLeft",
+            osu.Framework.Input.Bindings.InputKey.BackSpace => "Backspace",
+            osu.Framework.Input.Bindings.InputKey.Tilde => "Backquote",
+            osu.Framework.Input.Bindings.InputKey.Plus => "Equal",
+            osu.Framework.Input.Bindings.InputKey.BackSlash => "Backslash",
+            >= osu.Framework.Input.Bindings.InputKey.MouseLeft => null,
+            _ => name,
+        };
     }
 
     private async Task StartAudioTest()
