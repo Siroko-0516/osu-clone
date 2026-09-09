@@ -331,7 +331,8 @@
             var ruleset = CurrentRuleset;
             await keyBindingStore.SaveBindingsAsync(ruleset.RulesetInfo.ShortName, CurrentVariant,
                 bindingRows.Select(row => (osu.Framework.Input.Bindings.IKeyBinding)new osu.Framework.Input.Bindings.KeyBinding(row.Key, row.Action)));
-            keyBindingStatus = $"{BindingEditorTitle} bindings saved";
+            await SyncBrowserBindings();
+            keyBindingStatus = $"{BindingEditorTitle} bindings saved and active";
         }
         catch (Exception exception) { keyBindingStatus = "Save failed: " + exception.Message; }
         finally { bindingsSaving = false; }
