@@ -51,6 +51,8 @@ test('renderer startup and texture transport', async () => {
         const region = calls.filter(call => call[0] === 'texSubImage2D').at(-1);
         assert.equal(region[3], 2);
         assert.equal(region[4], 1, 'atlas Y must agree with top-left framework UVs');
+        host.applyTextureUploads([{ textureId: 2, deleted: true }]);
+        assert.equal(calls.filter(call => call[0] === 'deleteTexture').length, 1);
     } finally {
         host.stopBrowserHost();
         delete globalThis.window;

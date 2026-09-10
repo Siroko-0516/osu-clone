@@ -376,6 +376,12 @@ export function applyTextureUploads(uploads) {
     for (const upload of uploads) {
         let entry = frameworkTextures.get(upload.textureId);
 
+        if (upload.deleted) {
+            if (entry) gl.deleteTexture(entry);
+            frameworkTextures.delete(upload.textureId);
+            continue;
+        }
+
         if (!entry) {
             entry = gl.createTexture();
             frameworkTextures.set(upload.textureId, entry);

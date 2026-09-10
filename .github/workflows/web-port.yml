@@ -48,7 +48,7 @@ jobs:
         with:
           repository: Siroko-0516/osu-framework-clone
           # Keep the game and framework pair reproducible while both ports evolve.
-          ref: baed90d5c20893e70c93689a78cca03852d36b9f
+          ref: 410b83775f315f7a6e96cb2ebd715fbae07f47d5
           path: osu-framework-clone
 
       - uses: actions/setup-dotnet@v4
