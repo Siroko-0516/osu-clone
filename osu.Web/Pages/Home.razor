@@ -546,12 +546,20 @@
         beatmapImportStatus = $"Reading {args.File.Name}";
         try
         {
-            await using Stream stream = args.File.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024);
-            // InputFile streams do not support synchronous reads or seeking, which ZipArchive needs.
-            using var archiveBytes = new MemoryStream();
-            await stream.CopyToAsync(archiveBytes);
-            archiveBytes.Position = 0;
-            var package = osu.Game.Database.Persistence.OszArchiveReader.Read(archiveBytes);
+            osu.Game.Database.Persistence.OszImportPackage package;
+            await using (Stream stream = args.File.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024))
+            {
+                // InputFile streams do not support seeking, which ZipArchive needs.
+                // Pre-sizing avoids MemoryStream repeatedly retaining progressively larger buffers.
+                using var archiveBytes = new MemoryStream(checked((int)args.File.Size));
+                await stream.CopyToAsync(archiveBytes);
+                archiveBytes.Position = 0;
+                package = osu.Game.Database.Persistence.OszArchiveReader.Read(archiveBytes);
+            }
+
+            // The compressed archive can now be collected before IndexedDB encoding starts.
+            // This is important on memory-constrained mobile WebAssembly runtimes.
+            GC.Collect();
             StopSongPreview();
             selectedDifficulty = null;
             selectedBeatmap = null;
@@ -562,16 +570,34 @@
                 await output.WriteAsync(file.Data);
             }
 
-            // Persist only the imported archive entries. Re-snapshotting every browser file
-            // on each import multiplies peak memory use for large beatmap libraries.
-            await fileStore.PutAsync(package.Files.Select(file => new BrowserFileStore.Entry
+            // Send one entry at a time. Serialising the complete archive as one JS
+            // argument creates another base64-sized copy and exhausts mobile WASM memory.
+            int savedFiles = 0;
+            foreach (var file in package.Files)
             {
-                Path = file.Path,
-                Data = file.Data,
-            }));
+                await fileStore.PutAsync(new[]
+                {
+                    new BrowserFileStore.Entry
+                    {
+                        Path = file.Path,
+                        Data = file.Data,
+                    },
+                });
+
+                savedFiles++;
+                if (savedFiles % 16 == 0)
+                {
+                    beatmapImportStatus = $"Saving {savedFiles} / {package.Files.Count} files";
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
             await beatmapCatalog.SaveSetAsync(package.Set, package.Beatmaps);
             beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             beatmapImportStatus = $"Imported {package.Set.Artist} — {package.Set.Title} ({package.Beatmaps.Count} difficulties)";
+        }
+        catch (OutOfMemoryException)
+        {
+            beatmapImportStatus = "Import failed: this .osz is too large for the current browser memory limit.";
         }
         catch (Exception exception)
         {
