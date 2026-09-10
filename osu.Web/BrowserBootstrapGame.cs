@@ -81,6 +81,7 @@ namespace osu.Web
         public Sample? AudioTestSample { get; private set; }
         public int SamplePlayCount { get; private set; }
         private readonly Container inputLayer = new() { RelativeSizeAxes = Axes.Both };
+        private readonly Container idleLayer = new() { RelativeSizeAxes = Axes.Both };
 
         public void SetRuleset(string mode, int variant = 0) => Schedule(() =>
         {
@@ -106,6 +107,7 @@ namespace osu.Web
                     GameplayError = string.Empty;
                     GameplaySession?.Dispose();
                     GameplaySession = new BrowserGameplaySession(beatmap, ruleset, track);
+                    idleLayer.Hide();
                     inputLayer.Child = GameplaySession.Clock;
                     GameplaySession.Start();
                 }
@@ -115,6 +117,7 @@ namespace osu.Web
                     GameplaySession = null;
                     GameplayError = formatException(exception);
                     inputLayer.Clear();
+                    idleLayer.Show();
                 }
             });
         }
@@ -128,6 +131,7 @@ namespace osu.Web
             GameplaySession?.Dispose();
             GameplaySession = null;
             inputLayer.Clear();
+            idleLayer.Show();
         });
 
         private static string formatException(Exception exception)
@@ -247,14 +251,14 @@ namespace osu.Web
                     RelativeSizeAxes = Axes.Both,
                     Colour = new Color4(18, 12, 24, 255),
                 },
-                new Sprite
+                idleLayer.With(layer => layer.Child = new Sprite
                 {
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     Size = new osuTK.Vector2(320),
                     Texture = skinSource.GetTexture(@"Menu/logo", default, default)
                               ?? throw new InvalidOperationException("The built-in skin did not provide the original menu logo texture."),
-                },
+                }),
                 cursor,
                 inputLayer,
             };
