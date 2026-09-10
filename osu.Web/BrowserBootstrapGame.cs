@@ -17,6 +17,7 @@ using osu.Game.Configuration;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Configuration;
 using osu.Game.Screens.Play;
+using osu.Game.Skinning;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Mania;
 using osu.Game.Rulesets.Taiko;
@@ -36,6 +37,7 @@ namespace osu.Web
     {
         private readonly IKeyBindingSource bindingSource;
         private readonly IGamePersistence persistence;
+        private readonly BrowserBuiltInSkinSource skinSource = new();
         private BrowserRulesetConfigCache? rulesetConfigCache;
         public BrowserGameplaySession? GameplaySession { get; private set; }
         public DrawableRuleset? CurrentDrawableRuleset => GameplaySession?.DrawableRuleset;
@@ -56,6 +58,7 @@ namespace osu.Web
             var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
             dependencies.CacheAs(bindingSource);
             dependencies.CacheAs(persistence);
+            dependencies.CacheAs<ISkinSource>(skinSource);
             dependencies.CacheAs<IRulesetConfigCache>(rulesetConfigCache = new BrowserRulesetConfigCache(persistence.RulesetSettings));
             dependencies.Cache(new OsuConfigManager(Host.Storage));
             return dependencies;
@@ -215,6 +218,18 @@ namespace osu.Web
         {
             ProcessedInputEvents++;
             base.OnKeyUp(e);
+        }
+
+        protected override void Dispose(bool isDisposing)
+        {
+            if (isDisposing)
+            {
+                GameplaySession?.Dispose();
+                rulesetConfigCache?.Dispose();
+                skinSource.Dispose();
+            }
+
+            base.Dispose(isDisposing);
         }
 
         [BackgroundDependencyLoader]
