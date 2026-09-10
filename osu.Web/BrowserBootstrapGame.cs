@@ -118,7 +118,6 @@ namespace osu.Web
                     GameplayError = formatException(exception);
                     inputLayer.Clear();
                     idleLayer.Show();
-                    idleLayer.Show();
                 }
             });
         }
