@@ -16,7 +16,17 @@ let activePointerId = null;
 const keys = new Set();
 let ruleset = "osu";
 let frameworkFrame;
-const frameworkTriangles = new Float32Array(48);
+let frameworkFramePrepared = false;
+let frameworkVertices = new Float32Array(0);
+const frameworkDrawStarts = [];
+const frameworkDrawCounts = [];
+const frameworkDrawTextures = [];
+let frameworkDrawCount = 0;
+let frameworkPosition;
+let frameworkColour;
+let frameworkTexCoord;
+let frameworkViewport;
+let frameworkSampler;
 const frameworkTextures = new Map();
 const listeners = [];
 let lastPointerReport = 0;
@@ -144,39 +154,63 @@ function createFrameworkProgram() {
     return result;
 }
 
+function prepareFrameworkFrame(state) {
+    const quadCount = Math.floor((state.length - 8) / 36);
+    const required = quadCount * 48;
+    if (frameworkVertices.length < required) {
+        let capacity = Math.max(48, frameworkVertices.length);
+        while (capacity < required) capacity *= 2;
+        frameworkVertices = new Float32Array(capacity);
+    }
+
+    let target = 0;
+    frameworkDrawCount = 0;
+    let previousTexture = -1;
+
+    for (let offset = 8; offset + 35 < state.length; offset += 36) {
+        const texture = state[offset + 8];
+        if (texture !== previousTexture) {
+            frameworkDrawStarts[frameworkDrawCount] = target / 8;
+            frameworkDrawCounts[frameworkDrawCount] = 0;
+            frameworkDrawTextures[frameworkDrawCount] = texture;
+            frameworkDrawCount++;
+            previousTexture = texture;
+        }
+
+        for (const vertex of [0, 1, 2, 2, 3, 0]) {
+            const source = offset + vertex * 9;
+            for (let component = 0; component < 8; component++)
+                frameworkVertices[target++] = state[source + component];
+        }
+        frameworkDrawCounts[frameworkDrawCount - 1] += 6;
+    }
+
+    gl.useProgram(frameworkProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, frameworkVertices.subarray(0, target), gl.DYNAMIC_DRAW);
+    frameworkFramePrepared = true;
+}
+
 function drawFrameworkFrame(state) {
     const viewportWidth = state[6] > 0 ? state[6] : canvas.width;
     const viewportHeight = state[7] > 0 ? state[7] : canvas.height;
-    // osu!framework's quad batches contain four vertices in BL, BR, TR, TL order.
-    // Reuse one typed array. The previous implementation allocated a sliced frame,
-    // six sliced vertices and a new Float32Array for every quad on every display
-    // refresh, which quickly exhausted mobile browser memory on large beatmaps.
-    for (let offset = 8; offset + 35 < state.length; offset += 36) {
-        let target = 0;
-        for (const vertex of [0, 1, 2, 2, 3, 0]) {
-            const start = offset + vertex * 9;
-            for (let component = 0; component < 8; component++)
-                frameworkTriangles[target++] = state[start + component];
-        }
+    if (!frameworkFramePrepared) prepareFrameworkFrame(state);
 
-        gl.useProgram(frameworkProgram);
-        gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, frameworkTriangles, gl.DYNAMIC_DRAW);
+    gl.useProgram(frameworkProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
+    gl.enableVertexAttribArray(frameworkPosition);
+    gl.enableVertexAttribArray(frameworkColour);
+    gl.enableVertexAttribArray(frameworkTexCoord);
+    gl.vertexAttribPointer(frameworkPosition, 2, gl.FLOAT, false, 32, 0);
+    gl.vertexAttribPointer(frameworkColour, 4, gl.FLOAT, false, 32, 8);
+    gl.vertexAttribPointer(frameworkTexCoord, 2, gl.FLOAT, false, 32, 24);
+    gl.uniform2f(frameworkViewport, viewportWidth, viewportHeight);
 
-        const position = gl.getAttribLocation(frameworkProgram, "a_position");
-        const colour = gl.getAttribLocation(frameworkProgram, "a_colour");
-        const texCoord = gl.getAttribLocation(frameworkProgram, "a_tex_coord");
-        gl.enableVertexAttribArray(position);
-        gl.enableVertexAttribArray(colour);
-        gl.enableVertexAttribArray(texCoord);
-        gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 32, 0);
-        gl.vertexAttribPointer(colour, 4, gl.FLOAT, false, 32, 8);
-        gl.vertexAttribPointer(texCoord, 2, gl.FLOAT, false, 32, 24);
-        gl.uniform2f(gl.getUniformLocation(frameworkProgram, "u_viewport"), viewportWidth, viewportHeight);
+    for (let index = 0; index < frameworkDrawCount; index++) {
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, frameworkTextures.get(state[offset + 8]) ?? fallbackTexture);
-        gl.uniform1i(gl.getUniformLocation(frameworkProgram, "u_texture"), 0);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindTexture(gl.TEXTURE_2D, frameworkTextures.get(frameworkDrawTextures[index]) ?? fallbackTexture);
+        gl.uniform1i(frameworkSampler, 0);
+        gl.drawArrays(gl.TRIANGLES, frameworkDrawStarts[index], frameworkDrawCounts[index]);
     }
 }
 
@@ -193,6 +227,11 @@ export async function startBrowserHost(target, dotnetReference) {
     program = createProgram();
     frameworkProgram = createFrameworkProgram();
     frameworkBuffer = gl.createBuffer();
+    frameworkPosition = gl.getAttribLocation(frameworkProgram, "a_position");
+    frameworkColour = gl.getAttribLocation(frameworkProgram, "a_colour");
+    frameworkTexCoord = gl.getAttribLocation(frameworkProgram, "a_tex_coord");
+    frameworkViewport = gl.getUniformLocation(frameworkProgram, "u_viewport");
+    frameworkSampler = gl.getUniformLocation(frameworkProgram, "u_texture");
     fallbackTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, fallbackTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -352,6 +391,9 @@ export function stopBrowserHost() {
     frameworkBuffer = undefined;
     fallbackTexture = undefined;
     frameworkTextures.clear();
+    frameworkFrame = undefined;
+    frameworkFramePrepared = false;
+    frameworkDrawCount = 0;
 }
 
 export function setRuleset(mode, keyboardCodes = []) {
@@ -364,6 +406,7 @@ export function setRuleset(mode, keyboardCodes = []) {
 
 export function applyFrameworkFrame(state) {
     frameworkFrame = state;
+    frameworkFramePrepared = false;
 }
 
 export function applyTextureUploads(uploads) {
