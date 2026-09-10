@@ -154,7 +154,7 @@ namespace osu.Game.Beatmaps
                 case RuntimeInfo.Platform.Windows:
                     platformOffsetClock.Offset = WINDOWS_BASE_AUDIO_OFFSET;
 
-                    if (audioManager.UseExperimentalWasapi.Value)
+                    if (audioManager!.UseExperimentalWasapi.Value)
                         platformOffsetClock.Offset += WINDOWS_EXPERIMENTAL_AUDIO_OFFSET;
                     return;
 
