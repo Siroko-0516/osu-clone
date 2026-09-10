@@ -199,6 +199,7 @@
     private string beatmapImportStatus = "No beatmap imported";
     private bool importingBeatmap;
     private BrowserBeatmapLoader? beatmapLoader;
+    private string? hydratedBeatmapSet;
     private osu.Game.Database.Persistence.BeatmapSnapshot? selectedDifficulty;
     private osu.Game.Beatmaps.IBeatmap? selectedBeatmap;
     private WebAudioTrack? songPreview;
@@ -220,7 +221,18 @@
         selectedBeatmap = null;
         try
         {
-            if (beatmapLoader is null || persistentStorage is null || audioModule is null) return;
+            if (beatmapLoader is null || persistentStorage is null || audioModule is null || fileStore is null || beatmapCatalog is null) return;
+
+            var set = beatmapCatalog.Sets.Single(candidate => candidate.Id == difficulty.SetId);
+            if (hydratedBeatmapSet != set.Id)
+            {
+                selectionStatus = $"Loading {set.Title} files…";
+                await InvokeAsync(StateHasChanged);
+                int loadedFiles = await fileStore.HydratePrefixAsync(persistentStorage, set.ResourcePath.TrimEnd('/') + "/");
+                hydratedBeatmapSet = set.Id;
+                fileStatus = $"{loadedFiles} files loaded for {set.Title}";
+            }
+
             var loaded = beatmapLoader.Load(difficulty.Id);
             string mode = difficulty.RulesetId switch { 0 => "osu", 1 => "taiko", 2 => "catch", 3 => "mania", _ => throw new InvalidDataException("Unsupported mode.") };
             if (mode == "mania") maniaKeys = (int)loaded.Difficulty.CircleSize;
@@ -439,8 +451,8 @@
             gameHost = new WebGameHost("osu-web");
             persistentStorage = gameHost.GetStorage("/osu-data");
             fileStore = new BrowserFileStore(JS);
-            int restoredFiles = await fileStore.HydrateAsync(persistentStorage);
-            fileStatus = $"{restoredFiles} browser files restored";
+            int storedFiles = await fileStore.CountAsync();
+            fileStatus = $"{storedFiles} browser files available on demand";
             beatmapLoader = new BrowserBeatmapLoader(beatmapCatalog, path => persistentStorage.GetStream(path, FileAccess.Read, FileMode.Open));
             osu.Framework.Game selectedGame;
             if (Original)
@@ -564,9 +576,6 @@
                     archiveBytes,
                     async file =>
                     {
-                        using (Stream output = persistentStorage.GetStream(file.Path, FileAccess.Write, FileMode.Create))
-                            await output.WriteAsync(file.Data);
-
                         await fileStore.PutAsync(new[]
                         {
                             new BrowserFileStore.Entry
@@ -610,12 +619,12 @@
         await FlushFiles();
     }
 
-    private async Task FlushFiles()
+    private Task FlushFiles()
     {
-        if (fileStore is null || persistentStorage is null) return;
-        try { await fileStore.FlushAsync(persistentStorage); fileStatus = "Browser files saved"; }
-        catch (Exception exception) { fileStatus = "File save failed: " + exception.Message; }
-        await InvokeAsync(StateHasChanged);
+        // Beatmap assets are committed individually during import. Replacing the
+        // whole IndexedDB snapshot here would discard sets that are not hydrated.
+        fileStatus = "Browser files saved incrementally";
+        return InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -718,14 +727,7 @@
             catch (Exception exception) { Console.Error.WriteLine("Settings commit failed during shutdown: " + exception); }
         }
         if (fileStore is not null)
-        {
-            if (persistentStorage is not null)
-            {
-                try { await fileStore.FlushAsync(persistentStorage); }
-                catch (Exception exception) { Console.Error.WriteLine("File commit failed during shutdown: " + exception); }
-            }
             await fileStore.DisposeAsync();
-        }
 
         if (module is not null)
         {
