@@ -16,6 +16,7 @@ let activePointerId = null;
 const keys = new Set();
 let ruleset = "osu";
 let frameworkFrame;
+const frameworkTriangles = new Float32Array(48);
 const frameworkTextures = new Map();
 const listeners = [];
 let lastPointerReport = 0;
@@ -146,21 +147,21 @@ function createFrameworkProgram() {
 function drawFrameworkFrame(state) {
     const viewportWidth = state[6] > 0 ? state[6] : canvas.width;
     const viewportHeight = state[7] > 0 ? state[7] : canvas.height;
-    const source = state.slice(8);
-    const triangles = [];
-
     // osu!framework's quad batches contain four vertices in BL, BR, TR, TL order.
-    // Expand and draw each quad with the texture that was active for its batch.
-    for (let offset = 0; offset + 35 < source.length; offset += 36) {
-        triangles.length = 0;
+    // Reuse one typed array. The previous implementation allocated a sliced frame,
+    // six sliced vertices and a new Float32Array for every quad on every display
+    // refresh, which quickly exhausted mobile browser memory on large beatmaps.
+    for (let offset = 8; offset + 35 < state.length; offset += 36) {
+        let target = 0;
         for (const vertex of [0, 1, 2, 2, 3, 0]) {
             const start = offset + vertex * 9;
-            triangles.push(...source.slice(start, start + 8));
+            for (let component = 0; component < 8; component++)
+                frameworkTriangles[target++] = state[start + component];
         }
 
         gl.useProgram(frameworkProgram);
         gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangles), gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, frameworkTriangles, gl.DYNAMIC_DRAW);
 
         const position = gl.getAttribLocation(frameworkProgram, "a_position");
         const colour = gl.getAttribLocation(frameworkProgram, "a_colour");
@@ -173,7 +174,7 @@ function drawFrameworkFrame(state) {
         gl.vertexAttribPointer(texCoord, 2, gl.FLOAT, false, 32, 24);
         gl.uniform2f(gl.getUniformLocation(frameworkProgram, "u_viewport"), viewportWidth, viewportHeight);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, frameworkTextures.get(source[offset + 8]) ?? fallbackTexture);
+        gl.bindTexture(gl.TEXTURE_2D, frameworkTextures.get(state[offset + 8]) ?? fallbackTexture);
         gl.uniform1i(gl.getUniformLocation(frameworkProgram, "u_texture"), 0);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }

@@ -687,8 +687,12 @@
                 if (gameStatus == "waiting for framework host startup")
                     gameStatus = Original ? "Realm-free browser game running" : "Framework diagnostic running — not OsuGame";
 
+                // Texture uploads must be drained every update, but serialising the
+                // complete drawable vertex stream at display refresh rate exhausts
+                // the mobile WebAssembly heap on object-heavy maps. WebGL keeps the
+                // previous geometry, so 15 visual updates per second are sufficient
+                // while framework timing and input continue at full frame rate.
                 var uploads = gameHost.GetBrowserTextureUploads();
-                float[] state = gameHost.GetBrowserFrameState();
                 if (module is not null)
                 {
                     if (uploads.Length > 0)
@@ -696,9 +700,19 @@
                         // params object[] expands it into individual upload arguments.
                         await module.InvokeVoidAsync("applyTextureUploads", (object)uploads);
 
-                    await module.InvokeVoidAsync("applyFrameworkFrame", state);
+                    if (frame % 4 == 0)
+                    {
+                        float[] state = gameHost.GetBrowserFrameState();
+                        await module.InvokeVoidAsync("applyFrameworkFrame", state);
+                    }
                 }
                 gameFrameCount++;
+
+                // Mono WASM is conservative about collecting the large temporary
+                // arrays created by JS interop. Keep their lifetime bounded on
+                // memory-constrained mobile browsers.
+                if (frame % 240 == 0)
+                    GC.Collect();
                 if (!string.IsNullOrEmpty(game?.GameplayError)
                     && !selectionStatus.StartsWith("Gameplay failed:", StringComparison.Ordinal))
                 {
@@ -709,6 +723,13 @@
                 {
                     selectionStatus = $"Playing {selectedDifficulty?.DifficultyName}: {selectedBeatmap?.HitObjects.Count ?? 0} objects · {session.Clock.CurrentTime:0} ms";
                 }
+            }
+            catch (OutOfMemoryException exception)
+            {
+                // Do not permanently disable the frame/input pump. Release temporary
+                // interop buffers and retry on the following browser frame.
+                GC.Collect();
+                gameStatus = "Recovering browser memory: " + exception.Message;
             }
             catch (Exception exception)
             {
