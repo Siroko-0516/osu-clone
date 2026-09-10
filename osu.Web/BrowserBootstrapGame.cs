@@ -238,6 +238,7 @@ namespace osu.Web
             // Exercise the real osu! resource and texture pipeline here. This is the
             // original embedded logo asset, not a web-side copy or replacement image.
             Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
+            skinSource.AttachResources(Resources, Host, Audio);
 
             Children = new Drawable[]
             {
