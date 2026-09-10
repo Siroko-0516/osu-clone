@@ -199,7 +199,6 @@
     private string beatmapImportStatus = "No beatmap imported";
     private bool importingBeatmap;
     private BrowserBeatmapLoader? beatmapLoader;
-    private string? hydratedBeatmapSet;
     private osu.Game.Database.Persistence.BeatmapSnapshot? selectedDifficulty;
     private osu.Game.Beatmaps.IBeatmap? selectedBeatmap;
     private WebAudioTrack? songPreview;
@@ -224,14 +223,15 @@
             if (beatmapLoader is null || persistentStorage is null || audioModule is null || fileStore is null || beatmapCatalog is null) return;
 
             var set = beatmapCatalog.Sets.Single(candidate => candidate.Id == difficulty.SetId);
-            if (hydratedBeatmapSet != set.Id)
-            {
-                selectionStatus = $"Loading {set.Title} files…";
-                await InvokeAsync(StateHasChanged);
-                int loadedFiles = await fileStore.HydratePrefixAsync(persistentStorage, set.ResourcePath.TrimEnd('/') + "/");
-                hydratedBeatmapSet = set.Id;
-                fileStatus = $"{loadedFiles} files loaded for {set.Title}";
-            }
+            selectionStatus = $"Loading {difficulty.DifficultyName}…";
+            await InvokeAsync(StateHasChanged);
+
+            // Loading an entire set can exceed the mobile WebAssembly heap. The
+            // decoder and gameplay clock only require the selected .osu and audio.
+            int loadedFiles = await fileStore.HydratePathsAsync(
+                persistentStorage,
+                new[] { difficulty.BeatmapPath, difficulty.AudioPath });
+            fileStatus = $"{loadedFiles} files loaded for {set.Title}";
 
             var loaded = beatmapLoader.Load(difficulty.Id);
             string mode = difficulty.RulesetId switch { 0 => "osu", 1 => "taiko", 2 => "catch", 3 => "mania", _ => throw new InvalidDataException("Unsupported mode.") };
