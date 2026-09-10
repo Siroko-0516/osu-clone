@@ -34,6 +34,7 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
         ArgumentNullException.ThrowIfNull(ruleset);
         ArgumentNullException.ThrowIfNull(track);
 
+        RelativeSizeAxes = Axes.Both;
         Beatmap = beatmap;
         Track = track;
 
