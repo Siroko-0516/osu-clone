@@ -104,7 +104,7 @@
                         @foreach (var difficulty in beatmapCatalog.GetBeatmaps(set.Id))
                         {
                             <button @key="difficulty.Id" class="@(selectedDifficulty?.Id == difficulty.Id ? "active" : null)"
-                                    aria-pressed="@(selectedDifficulty?.Id == difficulty.Id)" disabled="@importingBeatmap"
+                                    aria-pressed="@(selectedDifficulty?.Id == difficulty.Id)" disabled="@(importingBeatmap || loadingDifficulty)"
                                     @onclick="() => SelectDifficulty(difficulty)">
                                 @difficulty.DifficultyName · @RulesetLabel(difficulty.RulesetId)
                             </button>
@@ -202,8 +202,9 @@
     private osu.Game.Database.Persistence.BeatmapSnapshot? selectedDifficulty;
     private osu.Game.Beatmaps.IBeatmap? selectedBeatmap;
     private WebAudioTrack? songPreview;
+    private bool loadingDifficulty;
     private string songSearch = "";
-    private string selectionStatus = "Select a difficulty to load it. Gameplay rendering is still being ported.";
+    private string selectionStatus = "Select a difficulty to load it.";
     private IEnumerable<osu.Game.Database.Persistence.BeatmapSetSnapshot> VisibleSets =>
         (beatmapCatalog?.Sets ?? Array.Empty<osu.Game.Database.Persistence.BeatmapSetSnapshot>())
         .Where(set => string.IsNullOrWhiteSpace(songSearch) || $"{set.Artist} {set.Title} {set.Creator}".Contains(songSearch.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -215,12 +216,21 @@
 
     private async Task SelectDifficulty(osu.Game.Database.Persistence.BeatmapSnapshot difficulty)
     {
-        StopSongPreview();
-        selectedDifficulty = null;
-        selectedBeatmap = null;
+        if (loadingDifficulty)
+            return;
+
+        loadingDifficulty = true;
         try
         {
-            if (beatmapLoader is null || persistentStorage is null || audioModule is null || fileStore is null || beatmapCatalog is null) return;
+            if (beatmapLoader is null || persistentStorage is null || audioModule is null || fileStore is null || beatmapCatalog is null || game is null)
+                return;
+
+            // Resume the browser audio context while this method still runs as a
+            // direct user gesture. File hydration below may otherwise lose it.
+            audioModule.InvokeVoid("unlockAudio");
+            await StopSongPreviewAsync();
+            selectedDifficulty = null;
+            selectedBeatmap = null;
 
             var set = beatmapCatalog.Sets.Single(candidate => candidate.Id == difficulty.SetId);
             selectionStatus = $"Loading {difficulty.DifficultyName}…";
@@ -237,17 +247,23 @@
             string mode = difficulty.RulesetId switch { 0 => "osu", 1 => "taiko", 2 => "catch", 3 => "mania", _ => throw new InvalidDataException("Unsupported mode.") };
             if (mode == "mania") maniaKeys = (int)loaded.Difficulty.CircleSize;
             await SelectMode(mode);
-            audioModule.InvokeVoid("unlockAudio");
-            songPreview = new WebAudioTrack(audioModule, persistentStorage.GetStream(difficulty.AudioPath), difficulty.AudioPath);
-            game?.LoadBeatmap(loaded, CurrentRuleset, songPreview);
+
+            var nextTrack = new WebAudioTrack(audioModule, persistentStorage.GetStream(difficulty.AudioPath), difficulty.AudioPath);
+            await game.LoadBeatmapAsync(loaded, CurrentRuleset, nextTrack);
+            songPreview = nextTrack;
             selectedDifficulty = difficulty;
             selectedBeatmap = loaded;
-            selectionStatus = $"Loaded {difficulty.DifficultyName}: {loaded.HitObjects.Count} objects using the original {RulesetLabel(difficulty.RulesetId)} playfield.";
+            selectionStatus = $"Starting {difficulty.DifficultyName}: {loaded.HitObjects.Count} objects using the original {RulesetLabel(difficulty.RulesetId)} playfield…";
         }
         catch (Exception exception) { selectionStatus = "Could not load difficulty: " + exception.Message; }
+        finally
+        {
+            loadingDifficulty = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
-    private void PreviewSong()
+    private async Task PreviewSong()
     {
         if (selectedDifficulty is null || selectedBeatmap is null || persistentStorage is null || audioModule is null) return;
         try
@@ -266,27 +282,29 @@
                 songPreview.Start();
             }
         }
-        catch (Exception exception) { StopSongPreview(); selectionStatus = "Preview failed: " + exception.Message; }
+        catch (Exception exception) { await StopSongPreviewAsync(); selectionStatus = "Preview failed: " + exception.Message; }
     }
 
-    private void StopSongPreview()
+    private async Task StopSongPreviewAsync()
     {
-        if (songPreview is null)
+        WebAudioTrack? previousTrack = songPreview;
+        songPreview = null;
+
+        if (previousTrack is null)
             return;
 
-        if (game?.GameplaySession?.Track == songPreview)
+        if (game?.GameplaySession?.Track == previousTrack)
         {
-            // The gameplay session owns this track and disposes it on the update thread.
-            game.StopGameplay();
+            // Wait until the update thread has detached the old playfield and
+            // released its decoded audio before allocating the next track.
+            await game.StopGameplayAsync();
         }
         else
         {
-            songPreview.Stop();
-            songPreview.Dispose();
-            songPreview.Update();
+            previousTrack.Stop();
+            previousTrack.Dispose();
+            previousTrack.Update();
         }
-
-        songPreview = null;
     }
 
     private bool bindingsSaving;
@@ -543,7 +561,7 @@
 
     private async Task StartAudioTest()
     {
-        StopSongPreview();
+        await StopSongPreviewAsync();
         audioModule?.InvokeVoid("unlockAudio");
         game?.StartAudioTest();
         await FlushFiles();
@@ -558,7 +576,7 @@
         beatmapImportStatus = $"Reading {args.File.Name}";
         try
         {
-            StopSongPreview();
+            await StopSongPreviewAsync();
             selectedDifficulty = null;
             selectedBeatmap = null;
             selectionStatus = "Select a difficulty to load it.";
@@ -686,6 +704,11 @@
                 {
                     selectionStatus = "Gameplay failed: " + game.GameplayError;
                 }
+                else if (game?.GameplaySession is { IsReady: true } session
+                         && selectionStatus.StartsWith("Starting ", StringComparison.Ordinal))
+                {
+                    selectionStatus = $"Playing {selectedDifficulty?.DifficultyName}: {selectedBeatmap?.HitObjects.Count ?? 0} objects · {session.Clock.CurrentTime:0} ms";
+                }
             }
             catch (Exception exception)
             {
@@ -718,7 +741,7 @@
 
     public async ValueTask DisposeAsync()
     {
-        StopSongPreview();
+        await StopSongPreviewAsync();
         beatmapLoader?.Dispose();
         foreach (var config in rulesetConfigs) config.Dispose();
         if (settingsStore is not null)

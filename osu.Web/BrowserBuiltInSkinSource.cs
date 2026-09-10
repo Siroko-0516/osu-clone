@@ -9,6 +9,8 @@ using osu.Framework.Graphics.Textures;
 using osu.Framework.IO.Stores;
 using osu.Framework.Platform;
 using osu.Game.Audio;
+using osu.Game.Beatmaps;
+using osu.Game.Rulesets;
 using osu.Game.Skinning;
 
 namespace osu.Web;
@@ -41,6 +43,15 @@ public sealed class BrowserBuiltInSkinSource : ISkinSource, IDisposable
         resources = new ResourceStoreBackedSkin(resourceStore, host, audio);
         SourceChanged?.Invoke();
     }
+
+    /// <summary>
+    /// Creates the ruleset-specific view of the built-in Argon skin used by
+    /// gameplay drawables. Rulesets such as mania provide their receptors,
+    /// notes and stage through this transformer rather than through raw image
+    /// files.
+    /// </summary>
+    public ISkin CreateRulesetSkin(Ruleset ruleset, IBeatmap beatmap)
+        => ruleset.CreateSkinTransformer(skin, beatmap) ?? skin;
 
     public ISkin? FindProvider(Func<ISkin, bool> lookupFunction)
     {

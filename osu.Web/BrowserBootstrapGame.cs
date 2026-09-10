@@ -98,30 +98,44 @@ namespace osu.Web
             };
         });
 
-        public void LoadBeatmap(IBeatmap beatmap, Ruleset ruleset, Track track)
+        public Task LoadBeatmapAsync(IBeatmap beatmap, Ruleset ruleset, Track track)
         {
             ArgumentNullException.ThrowIfNull(beatmap);
             ArgumentNullException.ThrowIfNull(ruleset);
             ArgumentNullException.ThrowIfNull(track);
 
-            Schedule(() =>
+            return runOnUpdateThread(() =>
             {
+                BrowserGameplaySession? nextSession = null;
+
                 try
                 {
                     GameplayError = string.Empty;
-                    GameplaySession?.Dispose();
-                    GameplaySession = new BrowserGameplaySession(beatmap, ruleset, track);
+                    GameplaySession = null;
+                    inputLayer.Clear();
+
+                    nextSession = new BrowserGameplaySession(
+                        beatmap,
+                        ruleset,
+                        track,
+                        skinSource.CreateRulesetSkin(ruleset, beatmap));
                     idleLayer.Hide();
-                    inputLayer.Child = GameplaySession;
-                    GameplaySession.Start();
+                    inputLayer.Child = nextSession;
+                    GameplaySession = nextSession;
+                    nextSession.Start();
                 }
                 catch (Exception exception)
                 {
-                    GameplaySession?.Dispose();
+                    nextSession?.Dispose();
+
+                    if (nextSession is null)
+                        track.Dispose();
+
                     GameplaySession = null;
                     GameplayError = formatException(exception);
                     inputLayer.Clear();
                     idleLayer.Show();
+                    throw;
                 }
             });
         }
@@ -130,13 +144,30 @@ namespace osu.Web
         public void ResumeGameplay() => Schedule(() => GameplaySession?.Resume());
         public void RestartGameplay() => Schedule(() => GameplaySession?.Restart());
         public void SeekGameplay(double time) => Schedule(() => GameplaySession?.Seek(time));
-        public void StopGameplay() => Schedule(() =>
+        public Task StopGameplayAsync() => runOnUpdateThread(() =>
         {
-            GameplaySession?.Dispose();
             GameplaySession = null;
             inputLayer.Clear();
             idleLayer.Show();
         });
+
+        private Task runOnUpdateThread(Action action)
+        {
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Schedule(() =>
+            {
+                try
+                {
+                    action();
+                    completion.SetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.SetException(exception);
+                }
+            });
+            return completion.Task;
+        }
 
         private static string formatException(Exception exception)
         {
@@ -219,7 +250,7 @@ namespace osu.Web
         protected override bool OnKeyDown(KeyDownEvent e)
         {
             ProcessedInputEvents++;
-            return true;
+            return base.OnKeyDown(e);
         }
 
         protected override void OnKeyUp(KeyUpEvent e)

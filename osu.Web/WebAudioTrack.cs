@@ -17,11 +17,24 @@ public sealed class WebAudioTrack : Track
     {
         this.module = module;
         using (stream)
-        using (var bytes = new MemoryStream())
         {
-            stream.CopyTo(bytes);
-            id = module.Invoke<int>("createTrack", bytes.ToArray());
+            id = module.Invoke<int>("createTrack", readAllBytes(stream));
         }
+    }
+
+    private static byte[] readAllBytes(Stream stream)
+    {
+        if (stream.CanSeek)
+        {
+            int remaining = checked((int)(stream.Length - stream.Position));
+            var bytes = new byte[remaining];
+            stream.ReadExactly(bytes);
+            return bytes;
+        }
+
+        using var copy = new MemoryStream();
+        stream.CopyTo(copy);
+        return copy.ToArray();
     }
 
     private State ReadState() => module.Invoke<State>("trackState", id);
