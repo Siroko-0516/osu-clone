@@ -546,51 +546,45 @@
         beatmapImportStatus = $"Reading {args.File.Name}";
         try
         {
-            osu.Game.Database.Persistence.OszImportPackage package;
-            await using (Stream stream = args.File.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024))
-            {
-                // InputFile streams do not support seeking, which ZipArchive needs.
-                // Pre-sizing avoids MemoryStream repeatedly retaining progressively larger buffers.
-                using var archiveBytes = new MemoryStream(checked((int)args.File.Size));
-                await stream.CopyToAsync(archiveBytes);
-                archiveBytes.Position = 0;
-                package = osu.Game.Database.Persistence.OszArchiveReader.Read(archiveBytes);
-            }
-
-            // The compressed archive can now be collected before IndexedDB encoding starts.
-            // This is important on memory-constrained mobile WebAssembly runtimes.
-            GC.Collect();
             StopSongPreview();
             selectedDifficulty = null;
             selectedBeatmap = null;
             selectionStatus = "Select a difficulty to load it.";
-            foreach (var file in package.Files)
-            {
-                using Stream output = persistentStorage.GetStream(file.Path, FileAccess.Write, FileMode.Create);
-                await output.WriteAsync(file.Data);
-            }
 
-            // Send one entry at a time. Serialising the complete archive as one JS
-            // argument creates another base64-sized copy and exhausts mobile WASM memory.
+            osu.Game.Database.Persistence.OszImportPackage package;
             int savedFiles = 0;
-            foreach (var file in package.Files)
+            await using (Stream stream = args.File.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024))
             {
-                await fileStore.PutAsync(new[]
-                {
-                    new BrowserFileStore.Entry
+                // InputFile is forward-only. Keep only the compressed archive in memory;
+                // each decompressed entry is persisted and released independently.
+                using var archiveBytes = new MemoryStream(checked((int)args.File.Size));
+                await stream.CopyToAsync(archiveBytes);
+                archiveBytes.Position = 0;
+                package = await osu.Game.Database.Persistence.OszArchiveReader.ReadStreamingAsync(
+                    archiveBytes,
+                    async file =>
                     {
-                        Path = file.Path,
-                        Data = file.Data,
-                    },
-                });
+                        using (Stream output = persistentStorage.GetStream(file.Path, FileAccess.Write, FileMode.Create))
+                            await output.WriteAsync(file.Data);
 
-                savedFiles++;
-                if (savedFiles % 16 == 0)
-                {
-                    beatmapImportStatus = $"Saving {savedFiles} / {package.Files.Count} files";
-                    await InvokeAsync(StateHasChanged);
-                }
+                        await fileStore.PutAsync(new[]
+                        {
+                            new BrowserFileStore.Entry
+                            {
+                                Path = file.Path,
+                                Data = file.Data,
+                            },
+                        });
+
+                        savedFiles++;
+                        if (savedFiles % 16 == 0)
+                        {
+                            beatmapImportStatus = $"Saving {savedFiles} files";
+                            await InvokeAsync(StateHasChanged);
+                        }
+                    });
             }
+
             await beatmapCatalog.SaveSetAsync(package.Set, package.Beatmaps);
             beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             beatmapImportStatus = $"Imported {package.Set.Artist} — {package.Set.Title} ({package.Beatmaps.Count} difficulties)";
