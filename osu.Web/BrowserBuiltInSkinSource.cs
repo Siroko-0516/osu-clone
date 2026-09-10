@@ -21,8 +21,17 @@ namespace osu.Web;
 /// </summary>
 public sealed class BrowserBuiltInSkinSource : ISkinSource, IDisposable
 {
-    private readonly ArgonSkin skin = new(null!);
+    // Argon is normally created by SkinManager with a Realm-backed resource
+    // provider. The browser runtime intentionally has no Realm, so its sample
+    // lookup must be routed through the resource-backed fallback instead of
+    // dereferencing ArgonSkin.Resources.
+    private readonly BrowserArgonSkin skin;
     private ResourceStoreBackedSkin? resources;
+
+    public BrowserBuiltInSkinSource()
+    {
+        skin = new BrowserArgonSkin(() => resources);
+    }
 
     public event Action? SourceChanged;
 
@@ -78,5 +87,10 @@ public sealed class BrowserBuiltInSkinSource : ISkinSource, IDisposable
     {
         resources?.Dispose();
         skin.Dispose();
+    }
+
+    private sealed class BrowserArgonSkin(Func<ResourceStoreBackedSkin?> getResources) : ArgonSkin(null!)
+    {
+        public override ISample? GetSample(ISampleInfo sampleInfo) => getResources()?.GetSample(sampleInfo);
     }
 }
