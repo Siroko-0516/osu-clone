@@ -16,24 +16,24 @@ public sealed class BrowserFileStore(IJSRuntime js) : IAsyncDisposable
     public async Task<int> CountAsync() =>
         await (await module.Value).InvokeAsync<int>("count");
 
-    public async Task<int> HydratePrefixAsync(FrameworkStorage storage, string prefix)
+    public async Task<int> HydratePathsAsync(FrameworkStorage storage, IEnumerable<string> paths)
     {
-        validate(prefix.TrimEnd('/'));
         var browserModule = await module.Value;
-        string[] paths = await browserModule.InvokeAsync<string[]>("keys", prefix);
+        int loaded = 0;
 
-        foreach (string path in paths)
+        foreach (string path in paths.Distinct(StringComparer.Ordinal))
         {
             validate(path);
             Entry? entry = await browserModule.InvokeAsync<Entry?>("get", path);
             if (entry is null)
-                continue;
+                throw new FileNotFoundException("A stored beatmap resource is missing.", path);
 
             using var output = storage.GetStream(entry.Path, FileAccess.Write, FileMode.Create);
             await output.WriteAsync(entry.Data);
+            loaded++;
         }
 
-        return paths.Length;
+        return loaded;
     }
 
     public async Task PutAsync(IEnumerable<Entry> entries)
