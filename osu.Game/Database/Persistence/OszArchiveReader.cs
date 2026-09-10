@@ -11,6 +11,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace osu.Game.Database.Persistence
 {
@@ -74,6 +75,89 @@ namespace osu.Game.Database.Persistence
             {
                 string requested = resolveRelativePath(map.Path, map.AudioFilename);
                 return files.SingleOrDefault(file => file.Path.Equals(requested, StringComparison.OrdinalIgnoreCase))?.Path
+                       ?? throw new InvalidDataException($"Difficulty '{map.Version}' references missing audio '{requested}'.");
+            }
+        }
+
+        /// <summary>
+        /// Reads metadata first, then extracts each archive entry individually.
+        /// This avoids retaining the complete decompressed archive in WebAssembly memory.
+        /// </summary>
+        public static async Task<OszImportPackage> ReadStreamingAsync(Stream source, Func<OszFile, ValueTask> storeFile)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            ArgumentNullException.ThrowIfNull(storeFile);
+            if (!source.CanSeek)
+                throw new ArgumentException("Streaming import requires a seekable archive stream.", nameof(source));
+
+            source.Position = 0;
+            string archiveHash = Convert.ToHexString(await SHA256.HashDataAsync(source).ConfigureAwait(false)).ToLowerInvariant();
+            source.Position = 0;
+
+            var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var parsed = new List<ParsedBeatmap>();
+            long totalSize = 0;
+
+            using (var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name))
+                        continue;
+                    if (paths.Count >= MAX_FILES)
+                        throw new InvalidDataException($"Beatmap archive contains more than {MAX_FILES} files.");
+
+                    string path = normalisePath(entry.FullName);
+                    if (!paths.Add(path))
+                        throw new InvalidDataException($"Beatmap archive contains duplicate resource path '{path}'.");
+                    totalSize = checked(totalSize + entry.Length);
+                    if (totalSize > MAX_UNCOMPRESSED_SIZE)
+                        throw new InvalidDataException("Beatmap archive is too large after decompression.");
+
+                    if (!path.EndsWith(".osu", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    using Stream input = entry.Open();
+                    using var output = new MemoryStream(entry.Length > int.MaxValue ? 0 : (int)entry.Length);
+                    await input.CopyToAsync(output).ConfigureAwait(false);
+                    parsed.Add(parseBeatmap(new OszFile(path, output.ToArray())));
+                }
+            }
+
+            if (parsed.Count == 0)
+                throw new InvalidDataException("Beatmap archive does not contain an .osu difficulty.");
+
+            ParsedBeatmap first = parsed[0];
+            string setId = first.SetId > 0 ? first.SetId.ToString(CultureInfo.InvariantCulture) : archiveHash;
+            string root = $"beatmaps/{setId}";
+            var set = new BeatmapSetSnapshot(setId, first.Artist, first.Title, first.Creator, root);
+            var difficulties = parsed.Select(map => new BeatmapSnapshot(
+                map.BeatmapId > 0 ? map.BeatmapId.ToString(CultureInfo.InvariantCulture) : hashText(setId + "\0" + map.Path),
+                setId, map.Version, map.Mode, 0, $"{f.3,5,3,5c}(s=>s)}"{root}/{map.Path}", $"{root}/{resolveAudioPath(map)}"))
+                                     .ToArray();
+
+            source.Position = 0;
+            using (var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name))
+                        continue;
+
+                    string path = normalisePath(entry.FullName);
+                    using Stream input = entry.Open();
+                    using var output = new MemoryStream(entry.Length > int.MaxValue ? 0 : (int)entry.Length);
+                    await input.CopyToAsync(output).ConfigureAwait(false);
+                    await storeFile(new OszFile($"{root}/{path}", output.ToArray())).ConfigureAwait(false);
+                }
+            }
+
+            return new OszImportPackage(set, difficulties, Array.Empty<OszFile>());
+
+            string resolveAudioPath(ParsedBeatmap map)
+            {
+                string requested = resolveRelativePath(map.Path, map.AudioFilename);
+                return paths.SingleOrDefault(path => path.Equals(requested, StringComparison.OrdinalIgnoreCase))
                        ?? throw new InvalidDataException($"Difficulty '{map.Version}' references missing audio '{requested}'.");
             }
         }
