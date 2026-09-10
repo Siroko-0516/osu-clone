@@ -126,7 +126,7 @@
         {
             <div class="song-preview">
                 <button @onclick="PreviewSong">Preview music</button>
-                <button @onclick="StopSongPreview">Stop preview</button>
+                <button @onclick="StopSongPreviewAsync">Stop preview</button>
                 <span>@selectedBeatmap.HitObjects.Count objects · CS @selectedBeatmap.Difficulty.CircleSize · OD @selectedBeatmap.Difficulty.OverallDifficulty</span>
             </div>
         }
