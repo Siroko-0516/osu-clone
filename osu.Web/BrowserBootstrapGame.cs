@@ -14,6 +14,7 @@ using osu.Framework.Input.Bindings;
 using osu.Game.Input.Bindings;
 using osu.Game.Beatmaps;
 using osu.Game.Configuration;
+using osu.Game.Graphics;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Configuration;
 using osu.Game.Screens.Play;
@@ -60,7 +61,10 @@ namespace osu.Web
             dependencies.CacheAs(persistence);
             dependencies.CacheAs<ISkinSource>(skinSource);
             dependencies.CacheAs<IRulesetConfigCache>(rulesetConfigCache = new BrowserRulesetConfigCache(persistence.RulesetSettings));
-            dependencies.Cache(new OsuConfigManager(Host.Storage));
+            var config = new OsuConfigManager(Host.Storage);
+            dependencies.Cache(config);
+            dependencies.CacheAs<IGameplaySettings>(config);
+            dependencies.Cache(new OsuColour());
             return dependencies;
         }
 
@@ -108,7 +112,7 @@ namespace osu.Web
                     GameplaySession?.Dispose();
                     GameplaySession = new BrowserGameplaySession(beatmap, ruleset, track);
                     idleLayer.Hide();
-                    inputLayer.Child = GameplaySession.Clock;
+                    inputLayer.Child = GameplaySession;
                     GameplaySession.Start();
                 }
                 catch (Exception exception)
