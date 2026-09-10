@@ -41,17 +41,17 @@ namespace osu.Game.Beatmaps
         private readonly DecouplingFramedClock decoupledTrack;
         private readonly InterpolatingFramedClock interpolatedTrack;
 
-        [Resolved]
-        private OsuConfigManager config { get; set; } = null!;
+        [Resolved(canBeNull: true)]
+        private OsuConfigManager? config { get; set; }
 
         [Resolved(canBeNull: true)]
         private RealmAccess? realm { get; set; }
 
-        [Resolved]
-        private IBindable<WorkingBeatmap> beatmap { get; set; } = null!;
+        [Resolved(canBeNull: true)]
+        private IBindable<WorkingBeatmap>? beatmap { get; set; }
 
-        [Resolved]
-        private AudioManager audioManager { get; set; } = null!;
+        [Resolved(canBeNull: true)]
+        private AudioManager? audioManager { get; set; }
 
         private Bindable<bool> experimentalAudio = null!;
 
@@ -105,6 +105,9 @@ namespace osu.Game.Beatmaps
                 Debug.Assert(userBeatmapOffsetClock != null);
                 Debug.Assert(userGlobalOffsetClock != null);
 
+                if (config is null || realm is null || beatmap is null || audioManager is null)
+                    throw new InvalidOperationException("Desktop timing services are required when beatmap offsets are enabled.");
+
                 userAudioOffset = config.GetBindable<double>(OsuSetting.AudioOffset);
                 userAudioOffset.BindValueChanged(offset => userGlobalOffsetClock.Offset = offset.NewValue, true);
 
@@ -112,9 +115,6 @@ namespace osu.Game.Beatmaps
                 experimentalAudio.BindValueChanged(_ => updatePlatformOffset(), true);
 
                 // TODO: this doesn't update when using ChangeSource() to change beatmap.
-                if (realm is null)
-                    throw new InvalidOperationException("RealmAccess is required when beatmap offsets are enabled.");
-
                 beatmapOffsetSubscription = realm.SubscribeToPropertyChanged(
                     r => r.Find<BeatmapInfo>(beatmap.Value.BeatmapInfo.ID)?.UserSettings,
                     settings => settings.Offset,
