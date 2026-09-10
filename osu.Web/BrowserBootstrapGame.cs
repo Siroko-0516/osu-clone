@@ -244,6 +244,15 @@ namespace osu.Web
             Resources.AddStore(new DllResourceStore(OsuResources.ResourceAssembly));
             skinSource.AttachResources(Resources, Host, Audio);
 
+            idleLayer.Child = new Sprite
+            {
+                Anchor = Anchor.Centre,
+                Origin = Anchor.Centre,
+                Size = new osuTK.Vector2(320),
+                Texture = skinSource.GetTexture(@"Menu/logo", default, default)
+                          ?? throw new InvalidOperationException("The built-in skin did not provide the original menu logo texture."),
+            };
+
             Children = new Drawable[]
             {
                 new Box
@@ -251,14 +260,7 @@ namespace osu.Web
                     RelativeSizeAxes = Axes.Both,
                     Colour = new Color4(18, 12, 24, 255),
                 },
-                idleLayer.With(layer => layer.Child = new Sprite
-                {
-                    Anchor = Anchor.Centre,
-                    Origin = Anchor.Centre,
-                    Size = new osuTK.Vector2(320),
-                    Texture = skinSource.GetTexture(@"Menu/logo", default, default)
-                              ?? throw new InvalidOperationException("The built-in skin did not provide the original menu logo texture."),
-                }),
+                idleLayer,
                 cursor,
                 inputLayer,
             };
