@@ -13,16 +13,27 @@ public sealed class BrowserFileStore(IJSRuntime js) : IAsyncDisposable
     private readonly SemaphoreSlim syncLock = new(1, 1);
     public sealed class Entry { public string Path { get; set; } = ""; public byte[] Data { get; set; } = Array.Empty<byte>(); }
 
-    public async Task<int> HydrateAsync(FrameworkStorage storage)
+    public async Task<int> CountAsync() =>
+        await (await module.Value).InvokeAsync<int>("count");
+
+    public async Task<int> HydratePrefixAsync(FrameworkStorage storage, string prefix)
     {
-        var entries = await (await module.Value).InvokeAsync<Entry[]>("list");
-        foreach (var entry in entries)
+        validate(prefix.TrimEnd('/'));
+        var browserModule = await module.Value;
+        string[] paths = await browserModule.InvokeAsync<string[]>("keys", prefix);
+
+        foreach (string path in paths)
         {
-            validate(entry.Path);
+            validate(path);
+            Entry? entry = await browserModule.InvokeAsync<Entry?>("get", path);
+            if (entry is null)
+                continue;
+
             using var output = storage.GetStream(entry.Path, FileAccess.Write, FileMode.Create);
             await output.WriteAsync(entry.Data);
         }
-        return entries.Length;
+
+        return paths.Length;
     }
 
     public async Task PutAsync(IEnumerable<Entry> entries)
