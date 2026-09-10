@@ -252,7 +252,8 @@ namespace osu.Web
                     Anchor = Anchor.Centre,
                     Origin = Anchor.Centre,
                     Size = new osuTK.Vector2(320),
-                    Texture = Textures.Get(@"Menu/logo"),
+                    Texture = skinSource.GetTexture(@"Menu/logo", default, default)
+                              ?? throw new InvalidOperationException("The built-in skin did not provide the original menu logo texture."),
                 },
                 cursor,
                 inputLayer,
