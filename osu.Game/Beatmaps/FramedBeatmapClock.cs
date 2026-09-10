@@ -44,8 +44,8 @@ namespace osu.Game.Beatmaps
         [Resolved]
         private OsuConfigManager config { get; set; } = null!;
 
-        [Resolved]
-        private RealmAccess realm { get; set; } = null!;
+        [Resolved(canBeNull: true)]
+        private RealmAccess? realm { get; set; }
 
         [Resolved]
         private IBindable<WorkingBeatmap> beatmap { get; set; } = null!;
@@ -112,6 +112,9 @@ namespace osu.Game.Beatmaps
                 experimentalAudio.BindValueChanged(_ => updatePlatformOffset(), true);
 
                 // TODO: this doesn't update when using ChangeSource() to change beatmap.
+                if (realm is null)
+                    throw new InvalidOperationException("RealmAccess is required when beatmap offsets are enabled.");
+
                 beatmapOffsetSubscription = realm.SubscribeToPropertyChanged(
                     r => r.Find<BeatmapInfo>(beatmap.Value.BeatmapInfo.ID)?.UserSettings,
                     settings => settings.Offset,
