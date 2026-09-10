@@ -133,7 +133,7 @@ namespace osu.Game.Database.Persistence
             var set = new BeatmapSetSnapshot(setId, first.Artist, first.Title, first.Creator, root);
             var difficulties = parsed.Select(map => new BeatmapSnapshot(
                 map.BeatmapId > 0 ? map.BeatmapId.ToString(CultureInfo.InvariantCulture) : hashText(setId + "\0" + map.Path),
-                setId, map.Version, map.Mode, 0, $"{f.3,5,3,5c}(s=>s)}"{root}/{map.Path}", $"{root}/{resolveAudioPath(map)}"))
+                setId, map.Version, map.Mode, 0, $"{root}/{map.Path}", $"{root}/{resolveAudioPath(map)}"))
                                      .ToArray();
 
             source.Position = 0;
