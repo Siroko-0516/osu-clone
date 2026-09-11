@@ -453,7 +453,7 @@
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=3-input");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=5-render-batch");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
@@ -667,7 +667,7 @@
                 bool accepted;
                 try
                 {
-                    accepted = gameHost.PumpFrame();
+                    accepted = gameHost.PumpFrame(frame % 4 == 0);
                 }
                 finally
                 {
