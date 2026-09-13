@@ -26,6 +26,12 @@
     <_AOT_InternalForceInterpretAssemblies Include="ppy.Veldrid.MetalBindings.dll" />
     <_AOT_InternalForceInterpretAssemblies Include="ppy.Veldrid.OpenGLBindings.dll" />
     <_AOT_InternalForceInterpretAssemblies Include="ppy.Veldrid.SPIRV.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="Vortice.D3DCompiler.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="Vortice.Direct3D11.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="Vortice.Direct3D12.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="Vortice.DirectX.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="Vortice.DXGI.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="Vortice.Mathematics.dll" />
   </ItemGroup>
   <PropertyGroup>
   </PropertyGroup>
