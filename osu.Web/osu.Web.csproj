@@ -6,8 +6,8 @@
     <NullabilityInfoContextSupport>true</NullabilityInfoContextSupport>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <!-- Gameplay is CPU-bound under the Mono interpreter. AOT the release build. -->
-    <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
+    <!-- Native desktop-only transitive assemblies currently prevent whole-app AOT. -->
+    <RunAOTCompilation>false</RunAOTCompilation>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\osu.Game\osu.Game.csproj" />
