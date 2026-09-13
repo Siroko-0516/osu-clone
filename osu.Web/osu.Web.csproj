@@ -7,9 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
     <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
-    <!-- These desktop-only transitive assemblies are shipped for type compatibility
-         but are never executed by BrowserGameHost and cannot be compiled by Mono AOT. -->
+  </PropertyGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <!-- Desktop-only transitive shim; BrowserGameHost never executes it and Mono cannot AOT it. -->
     <_AOT_InternalForceInterpretAssemblies Include="alsa-sharp.dll" />
+  </ItemGroup>
+  <PropertyGroup>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\osu.Game\osu.Game.csproj" />
