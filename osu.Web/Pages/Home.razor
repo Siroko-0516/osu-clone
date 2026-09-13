@@ -667,7 +667,7 @@
                 bool accepted;
                 try
                 {
-                    accepted = gameHost.PumpFrame(frame % 4 == 0);
+                    accepted = gameHost.PumpFrame(frame % 2 == 0);
                 }
                 finally
                 {
@@ -690,8 +690,8 @@
                 // Texture uploads must be drained every update, but serialising the
                 // complete drawable vertex stream at display refresh rate exhausts
                 // the mobile WebAssembly heap on object-heavy maps. WebGL keeps the
-                // previous geometry, so 15 visual updates per second are sufficient
-                // while framework timing and input continue at full frame rate.
+                // previous geometry between transfers. AOT makes 30 visual updates per second
+                // practical while keeping the large interop payload bounded.
                 var uploads = gameHost.GetBrowserTextureUploads();
                 if (module is not null)
                 {
@@ -700,7 +700,7 @@
                         // params object[] expands it into individual upload arguments.
                         await module.InvokeVoidAsync("applyTextureUploads", (object)uploads);
 
-                    if (frame % 4 == 0)
+                    if (frame % 2 == 0)
                     {
                         float[] state = gameHost.GetBrowserFrameState();
                         await module.InvokeVoidAsync("applyFrameworkFrame", state);
@@ -708,11 +708,6 @@
                 }
                 gameFrameCount++;
 
-                // Mono WASM is conservative about collecting the large temporary
-                // arrays created by JS interop. Keep their lifetime bounded on
-                // memory-constrained mobile browsers.
-                if (frame % 240 == 0)
-                    GC.Collect();
                 if (!string.IsNullOrEmpty(game?.GameplayError)
                     && !selectionStatus.StartsWith("Gameplay failed:", StringComparison.Ordinal))
                 {
