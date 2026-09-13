@@ -405,7 +405,11 @@ export function setRuleset(mode, keyboardCodes = []) {
 }
 
 export function applyFrameworkFrame(state) {
-    frameworkFrame = state;
+    // Blazor transfers byte[] without JSON-encoding every float. Reinterpret the
+    // same interop buffer directly as the renderer's packed float stream.
+    frameworkFrame = state instanceof Uint8Array
+        ? new Float32Array(state.buffer, state.byteOffset, state.byteLength / Float32Array.BYTES_PER_ELEMENT)
+        : state;
     frameworkFramePrepared = false;
 }
 
