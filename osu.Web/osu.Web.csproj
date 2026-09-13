@@ -11,6 +11,21 @@
   <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <!-- Desktop-only transitive shim; BrowserGameHost never executes it and Mono cannot AOT it. -->
     <_AOT_InternalForceInterpretAssemblies Include="alsa-sharp.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="SDL2-CS.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="SDL3-CS.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="FFmpeg.AutoGen.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="OpenTabletDriver.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="OpenTabletDriver.Configurations.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="OpenTabletDriver.Native.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="OpenTabletDriver.Plugin.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.ManagedBass.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.ManagedBass.Fx.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.ManagedBass.Mix.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.ManagedBass.Wasapi.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.Veldrid.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.Veldrid.MetalBindings.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.Veldrid.OpenGLBindings.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="ppy.Veldrid.SPIRV.dll" />
   </ItemGroup>
   <PropertyGroup>
   </PropertyGroup>
