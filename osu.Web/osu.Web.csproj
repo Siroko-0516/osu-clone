@@ -34,19 +34,19 @@
     <_AOT_InternalForceInterpretAssemblies Include="Vortice.Mathematics.dll" />
     <_AOT_InternalForceInterpretAssemblies Include="Realm.dll" />
   </ItemGroup>
-  <!-- Realm model base types are still needed as metadata by osu.Game, but the
-       browser persistence path never calls Realm's native callbacks. Keep Realm
-       bundled for type resolution while excluding it from the native callback
-       scanner, then restore it as an interpreted assembly before AOT. -->
-  <Target Name="ExcludeRealmFromBrowserNativeScan" BeforeTargets="_GenerateManagedToNative" Condition="'$(BrowserPublish)' == 'true'">
+  <!-- Desktop model/native binding assemblies remain available for metadata, but
+       BrowserGameHost never executes their native callbacks. Keep them bundled
+       for type resolution while excluding them from the callback scanner, then
+       restore them as interpreted assemblies before AOT. -->
+  <Target Name="ExcludeDesktopBindingsFromBrowserNativeScan" BeforeTargets="_GenerateManagedToNative" Condition="'$(BrowserPublish)' == 'true'">
     <ItemGroup>
-      <_BrowserRealmAssembly Include="@(_WasmAssembliesInternal)" Condition="'%(_WasmAssembliesInternal.FileName)' == 'Realm'" />
-      <_WasmAssembliesInternal Remove="@(_BrowserRealmAssembly)" />
+      <_BrowserNativeBindingAssemblies Include="@(_WasmAssembliesInternal)" Condition="'%(_WasmAssembliesInternal.FileName)' == 'Realm' Or '%(_WasmAssembliesInternal.FileName)' == 'alsa-sharp' Or '%(_WasmAssembliesInternal.FileName)' == 'SDL2-CS' Or '%(_WasmAssembliesInternal.FileName)' == 'SDL3-CS' Or '%(_WasmAssembliesInternal.FileName)' == 'FFmpeg.AutoGen' Or '%(_WasmAssembliesInternal.FileName)' == 'OpenTabletDriver' Or '%(_WasmAssembliesInternal.FileName)' == 'OpenTabletDriver.Configurations' Or '%(_WasmAssembliesInternal.FileName)' == 'OpenTabletDriver.Native' Or '%(_WasmAssembliesInternal.FileName)' == 'OpenTabletDriver.Plugin' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.ManagedBass' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.ManagedBass.Fx' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.ManagedBass.Mix' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.ManagedBass.Wasapi' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.Veldrid' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.Veldrid.MetalBindings' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.Veldrid.OpenGLBindings' Or '%(_WasmAssembliesInternal.FileName)' == 'ppy.Veldrid.SPIRV' Or '%(_WasmAssembliesInternal.FileName)' == 'Vortice.D3DCompiler' Or '%(_WasmAssembliesInternal.FileName)' == 'Vortice.Direct3D11' Or '%(_WasmAssembliesInternal.FileName)' == 'Vortice.Direct3D12' Or '%(_WasmAssembliesInternal.FileName)' == 'Vortice.DirectX' Or '%(_WasmAssembliesInternal.FileName)' == 'Vortice.DXGI' Or '%(_WasmAssembliesInternal.FileName)' == 'Vortice.Mathematics'" />
+      <_WasmAssembliesInternal Remove="@(_BrowserNativeBindingAssemblies)" />
     </ItemGroup>
   </Target>
-  <Target Name="RestoreRealmAfterBrowserNativeScan" AfterTargets="_GenerateManagedToNative" BeforeTargets="_WasmAotCompileApp" Condition="'$(BrowserPublish)' == 'true'">
+  <Target Name="RestoreDesktopBindingsAfterBrowserNativeScan" AfterTargets="_GenerateManagedToNative" BeforeTargets="_WasmAotCompileApp" Condition="'$(BrowserPublish)' == 'true'">
     <ItemGroup>
-      <_WasmAssembliesInternal Include="@(_BrowserRealmAssembly)" />
+      <_WasmAssembliesInternal Include="@(_BrowserNativeBindingAssemblies)" />
     </ItemGroup>
   </Target>
   <PropertyGroup>
