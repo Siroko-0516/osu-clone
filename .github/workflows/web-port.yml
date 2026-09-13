@@ -67,8 +67,8 @@ jobs:
           dotnet build osu.Web.Settings.Tests/osu.Web.Settings.Tests.csproj -c Release -p:OsuBrowserBuild=true -p:WasmBuildNative=false
           dotnet osu.Web.Settings.Tests/bin/Release/net8.0/osu.Web.Settings.Tests.dll
 
-      - name: Publish AOT WebAssembly host
-        run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true -p:RunAOTCompilation=true
+      - name: Publish WebAssembly host
+        run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true -p:WasmBuildNative=false
 
       - name: Configure GitHub Pages base path
         run: sed -i 's|<base href="/">|<base href="/osu-clone/">|' artifacts/web/wwwroot/index.html
