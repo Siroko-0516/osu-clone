@@ -39,7 +39,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Realm" Version="20.1.0" />
+    <PackageReference Include="Realm" Version="20.1.0" Condition="'$(OsuBrowserBuild)' != 'true'" />
+    <PackageReference Include="Realm" Version="20.1.0" Condition="'$(OsuBrowserBuild)' == 'true'" ExcludeAssets="runtime" />
     <PackageReference Include="ppy.osu.Framework" Version="2026.807.0" Condition="'$(OsuBrowserBuild)' != 'true'" />
     <PackageReference Include="ppy.osu.Game.Resources" Version="2026.710.0" />
     <PackageReference Include="Sentry" Version="6.6.0" />
