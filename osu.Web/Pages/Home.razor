@@ -453,7 +453,7 @@
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=5-render-batch");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=6-binary-frames");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
@@ -667,7 +667,7 @@
                 bool accepted;
                 try
                 {
-                    accepted = gameHost.PumpFrame(frame % 2 == 0);
+                    accepted = gameHost.PumpFrame();
                 }
                 finally
                 {
@@ -690,8 +690,8 @@
                 // Texture uploads must be drained every update, but serialising the
                 // complete drawable vertex stream at display refresh rate exhausts
                 // the mobile WebAssembly heap on object-heavy maps. WebGL keeps the
-                // previous geometry between transfers. AOT makes 30 visual updates per second
-                // practical while keeping the large interop payload bounded.
+                // previous geometry between transfers. Frame state uses the byte-array fast
+                // interop path, allowing the scene to update at display refresh rate.
                 var uploads = gameHost.GetBrowserTextureUploads();
                 if (module is not null)
                 {
@@ -700,11 +700,8 @@
                         // params object[] expands it into individual upload arguments.
                         await module.InvokeVoidAsync("applyTextureUploads", (object)uploads);
 
-                    if (frame % 2 == 0)
-                    {
-                        float[] state = gameHost.GetBrowserFrameState();
-                        await module.InvokeVoidAsync("applyFrameworkFrame", state);
-                    }
+                    byte[] state = gameHost.GetBrowserFrameState();
+                    await module.InvokeVoidAsync("applyFrameworkFrame", state);
                 }
                 gameFrameCount++;
 
