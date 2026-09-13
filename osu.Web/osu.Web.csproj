@@ -32,7 +32,23 @@
     <_AOT_InternalForceInterpretAssemblies Include="Vortice.DirectX.dll" />
     <_AOT_InternalForceInterpretAssemblies Include="Vortice.DXGI.dll" />
     <_AOT_InternalForceInterpretAssemblies Include="Vortice.Mathematics.dll" />
+    <_AOT_InternalForceInterpretAssemblies Include="Realm.dll" />
   </ItemGroup>
+  <!-- Realm model base types are still needed as metadata by osu.Game, but the
+       browser persistence path never calls Realm's native callbacks. Keep Realm
+       bundled for type resolution while excluding it from the native callback
+       scanner, then restore it as an interpreted assembly before AOT. -->
+  <Target Name="ExcludeRealmFromBrowserNativeScan" BeforeTargets="_GenerateManagedToNative" Condition="'$(BrowserPublish)' == 'true'">
+    <ItemGroup>
+      <_BrowserRealmAssembly Include="@(_WasmAssembliesInternal)" Condition="'%(_WasmAssembliesInternal.FileName)' == 'Realm'" />
+      <_WasmAssembliesInternal Remove="@(_BrowserRealmAssembly)" />
+    </ItemGroup>
+  </Target>
+  <Target Name="RestoreRealmAfterBrowserNativeScan" AfterTargets="_GenerateManagedToNative" BeforeTargets="_WasmAotCompileApp" Condition="'$(BrowserPublish)' == 'true'">
+    <ItemGroup>
+      <_WasmAssembliesInternal Include="@(_BrowserRealmAssembly)" />
+    </ItemGroup>
+  </Target>
   <PropertyGroup>
   </PropertyGroup>
   <ItemGroup>
