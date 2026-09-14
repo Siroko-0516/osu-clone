@@ -63,6 +63,25 @@
     <section class="canvas-panel">
         <canvas @ref="canvas" tabindex="0" aria-label="osu browser game canvas"></canvas>
         <div class="canvas-hint">@ModeInputHint</div>
+        @if (bindingRows.Count > 0)
+        {
+            <div class="touch-controls" aria-label="@BindingEditorTitle touch controls">
+                @foreach (var row in bindingRows)
+                {
+                    string? code = ToBrowserCode(row.Key);
+                    if (code is not null)
+                    {
+                        <button @key="row" class="touch-key"
+                                @onpointerdown="() => SetVirtualKey(code, true)" @onpointerdown:preventDefault
+                                @onpointerup="() => SetVirtualKey(code, false)" @onpointerup:preventDefault
+                                @onpointercancel="() => SetVirtualKey(code, false)"
+                                @onpointerleave="() => SetVirtualKey(code, false)">
+                            <strong>@row.ActionName</strong><span>@row.Key</span>
+                        </button>
+                    }
+                }
+            </div>
+        }
     </section>
 
     <div>
@@ -453,7 +472,7 @@
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=9-dense-scene-budget");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=10-touch-rulesets");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
@@ -516,6 +535,13 @@
         await SyncBrowserBindings();
         keyBindingStatus = $"mania {maniaKeys}K bindings loaded";
         await InvokeAsync(StateHasChanged);
+    }
+
+    private ValueTask SetVirtualKey(string code, bool pressed)
+    {
+        return module is null
+            ? ValueTask.CompletedTask
+            : module.InvokeVoidAsync("setVirtualKey", code, pressed);
     }
 
     private async Task SyncBrowserBindings()
