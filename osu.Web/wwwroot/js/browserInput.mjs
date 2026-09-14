@@ -72,7 +72,6 @@ export function attachBrowserInput(canvas) {
         && (target.matches('input, textarea, select') || target.isContentEditable);
     listen(window, 'keydown', event => {
         if (isTextEntry(event.target)) return;
-        unlockAudio();
         if (!event.code || event.isComposing) return;
         event.preventDefault();
         if (event.repeat) return;
