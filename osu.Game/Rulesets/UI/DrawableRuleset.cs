@@ -206,6 +206,8 @@ namespace osu.Game.Rulesets.UI
         /// </summary>
         private void loadObjects(CancellationToken cancellationToken)
         {
+            Playfield.PrepareForHitObjects(Beatmap.HitObjects.Count);
+
             foreach (TObject h in Beatmap.HitObjects)
             {
                 cancellationToken.ThrowIfCancellationRequested();
