@@ -159,8 +159,7 @@ function createFrameworkProgram() {
 }
 
 function prepareFrameworkFrame(state) {
-    const liveFloatCount = Math.min(state.length - 8, Math.max(0, Math.floor(state[4])));
-    const quadCount = Math.floor(liveFloatCount / 36);
+    const quadCount = Math.floor((state.length - 8) / 36);
     const frameEnd = 8 + quadCount * 36;
     const required = quadCount * 48;
     if (frameworkVertices.length < required) {
