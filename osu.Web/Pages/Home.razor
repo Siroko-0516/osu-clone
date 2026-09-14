@@ -453,7 +453,7 @@
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=8-indexed-quads");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=9-dense-scene-budget");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
@@ -701,7 +701,14 @@
                         await module.InvokeVoidAsync("applyTextureUploads", (object)uploads);
 
                     byte[] state = gameHost.GetBrowserFrameState();
-                    await module.InvokeVoidAsync("applyFrameworkFrame", state);
+                    int liveFloatCount = (int)BitConverter.ToSingle(state, 4 * sizeof(float));
+                    // Keep simulation, input and audio at display refresh rate, but avoid
+                    // monopolising the browser UI thread with very large interop transfers.
+                    int visualTransferDivisor = liveFloatCount > 120000 ? 3
+                                                : liveFloatCount > 60000 ? 2
+                                                : 1;
+                    if (frame % visualTransferDivisor == 0)
+                        await module.InvokeVoidAsync("applyFrameworkFrame", state);
                 }
                 gameFrameCount++;
 
