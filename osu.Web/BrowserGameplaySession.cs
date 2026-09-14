@@ -58,6 +58,9 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
             healthProcessor: HealthProcessor);
 
         DrawableRuleset = ruleset.CreateDrawableRulesetWith(beatmap);
+        // Browsers share gameplay, rendering and interop on the UI thread. If one frame
+        // stalls, following the audio clock directly avoids a multi-second 60 Hz catch-up burst.
+        DrawableRuleset.SetFrameStablePlayback(false);
         Clock = new GameplayClockContainer(track, applyOffsets: false, requireDecoupling: true)
         {
             Child = new SkinProvidingContainer(rulesetSkin)
