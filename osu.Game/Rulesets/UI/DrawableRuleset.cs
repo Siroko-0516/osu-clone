@@ -470,6 +470,13 @@ namespace osu.Game.Rulesets.UI
         internal abstract bool FrameStablePlayback { get; set; }
 
         /// <summary>
+        /// Controls whether gameplay advances through every synthetic 60 Hz frame after a stall.
+        /// Browser hosts disable this so a blocked UI thread resynchronises directly to audio
+        /// instead of visibly fast-forwarding through accumulated frames.
+        /// </summary>
+        public void SetFrameStablePlayback(bool enabled) => FrameStablePlayback = enabled;
+
+        /// <summary>
         /// The mods which are to be applied.
         /// </summary>
         public abstract IReadOnlyList<Mod> Mods { get; }
