@@ -22,6 +22,14 @@ export function attachBrowserInput(canvas) {
         if (events.at(-1)?.kind === 'move') events[events.length - 1] = next;
         else events.push(next);
     };
+    const setKey = (code, pressed) => {
+        unlockAudio();
+        if (!code) return;
+        if (pressed ? !keys.has(code) : keys.has(code)) {
+            if (pressed) keys.add(code); else keys.delete(code);
+            events.push({ kind: 'key', code, pressed });
+        }
+    };
     const releaseButtons = () => {
         for (const button of buttons) events.push({ kind: 'button', button, pressed: false, x, y });
         buttons.clear();
@@ -67,13 +75,10 @@ export function attachBrowserInput(canvas) {
         unlockAudio();
         if (!event.code || event.isComposing) return;
         event.preventDefault();
-        if (event.repeat || keys.has(event.code)) return;
-        keys.add(event.code);
-        events.push({ kind: 'key', code: event.code, pressed: true });
+        if (event.repeat) return;
+        setKey(event.code, true);
     });
-    listen(window, 'keyup', event => {
-        if (keys.delete(event.code)) events.push({ kind: 'key', code: event.code, pressed: false });
-    });
+    listen(window, 'keyup', event => setKey(event.code, false));
     listen(canvas, 'wheel', event => {
         event.preventDefault();
         const scale = event.deltaMode === 1 ? 1 : event.deltaMode === 2 ? 10 : 1 / 100;
@@ -86,6 +91,7 @@ export function attachBrowserInput(canvas) {
         drain: () => events.splice(0),
         hasHeldKeys: () => keys.size > 0,
         heldKeys: () => [...keys],
+        setKey,
         reset,
         dispose() { for (const fn of remove) fn(); events.length = 0; keys.clear(); buttons.clear(); }
     };
