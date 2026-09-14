@@ -175,10 +175,12 @@
 </main>
 
 @code {
-    [SupplyParameterFromQuery]
-    public bool Original { get; set; } = true;
+    [SupplyParameterFromQuery(Name = "diagnostics")]
+    public bool Diagnostics { get; set; }
 
-    private void SwitchRuntime() => Navigation.NavigateTo($"?original={!Original}", forceLoad: true);
+    private bool Original => !Diagnostics;
+
+    private void SwitchRuntime() => Navigation.NavigateTo(Original ? "?diagnostics=true" : "", forceLoad: true);
 
     private ElementReference canvas;
     private IJSObjectReference? module;
@@ -472,7 +474,7 @@
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=11-compatible-renderer");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=12-playable-default");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
