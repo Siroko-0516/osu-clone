@@ -441,19 +441,19 @@
             beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             keyBindingStatus = "Browser key bindings loaded";
             LoadBindingEditor();
-            foreach (var ruleset in new osu.Game.Rulesets.Ruleset[] { new OsuRuleset(), new ManiaRuleset(), new TaikoRuleset() })
+            foreach (var ruleset in new osu.Game.Rulesets.Ruleset[] { new OsuRuleset(), new ManiaRuleset(), new TaikoRuleset(), new CatchRuleset() })
             {
                 var config = ruleset.CreateConfig(settingsStore);
                 if (config is not null) rulesetConfigs.Add(config);
                 if (config is OsuRulesetConfigManager standardConfig) osuConfig = standardConfig;
             }
             await settingsStore.FlushAsync();
-            settingsStatus = "Original osu!, mania and taiko settings loaded";
+            settingsStatus = "All four original ruleset settings loaded";
             audioModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserAudio.mjs");
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=6-binary-frames");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=7-reused-frame-buffers");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
