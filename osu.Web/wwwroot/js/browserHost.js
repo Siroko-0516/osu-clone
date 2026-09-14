@@ -8,6 +8,7 @@ let dotnet;
 let program;
 let frameworkProgram;
 let frameworkBuffer;
+let frameworkBufferCapacity = 0;
 let fallbackTexture;
 let frame = 0;
 let pumpPending = false;
@@ -21,6 +22,7 @@ let frameworkVertices = new Float32Array(0);
 const frameworkDrawStarts = [];
 const frameworkDrawCounts = [];
 const frameworkDrawTextures = [];
+const quadTriangleOrder = [0, 1, 2, 2, 3, 0];
 let frameworkDrawCount = 0;
 let frameworkPosition;
 let frameworkColour;
@@ -155,7 +157,9 @@ function createFrameworkProgram() {
 }
 
 function prepareFrameworkFrame(state) {
-    const quadCount = Math.floor((state.length - 8) / 36);
+    const liveFloatCount = Math.min(state.length - 8, Math.max(0, Math.floor(state[4])));
+    const quadCount = Math.floor(liveFloatCount / 36);
+    const frameEnd = 8 + quadCount * 36;
     const required = quadCount * 48;
     if (frameworkVertices.length < required) {
         let capacity = Math.max(48, frameworkVertices.length);
@@ -167,7 +171,7 @@ function prepareFrameworkFrame(state) {
     frameworkDrawCount = 0;
     let previousTexture = -1;
 
-    for (let offset = 8; offset + 35 < state.length; offset += 36) {
+    for (let offset = 8; offset + 35 < frameEnd; offset += 36) {
         const texture = state[offset + 8];
         if (texture !== previousTexture) {
             frameworkDrawStarts[frameworkDrawCount] = target / 8;
@@ -177,7 +181,7 @@ function prepareFrameworkFrame(state) {
             previousTexture = texture;
         }
 
-        for (const vertex of [0, 1, 2, 2, 3, 0]) {
+        for (const vertex of quadTriangleOrder) {
             const source = offset + vertex * 9;
             for (let component = 0; component < 8; component++)
                 frameworkVertices[target++] = state[source + component];
@@ -187,7 +191,12 @@ function prepareFrameworkFrame(state) {
 
     gl.useProgram(frameworkProgram);
     gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, frameworkVertices.subarray(0, target), gl.DYNAMIC_DRAW);
+    const byteLength = target * Float32Array.BYTES_PER_ELEMENT;
+    if (frameworkBufferCapacity < byteLength) {
+        frameworkBufferCapacity = Math.max(4096, 2 ** Math.ceil(Math.log2(byteLength)));
+        gl.bufferData(gl.ARRAY_BUFFER, frameworkBufferCapacity, gl.DYNAMIC_DRAW);
+    }
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, frameworkVertices, 0, target);
     frameworkFramePrepared = true;
 }
 
@@ -389,6 +398,7 @@ export function stopBrowserHost() {
     gl = undefined;
     frameworkProgram = undefined;
     frameworkBuffer = undefined;
+    frameworkBufferCapacity = 0;
     fallbackTexture = undefined;
     frameworkTextures.clear();
     frameworkFrame = undefined;
