@@ -9,3 +9,10 @@
 .song-library button.active { background: #aa3169; border-color: #ff9dc9; }
 .song-library button:focus-visible, .song-library input:focus-visible { outline: 2px solid #69d8ff; outline-offset: 3px; }
 .song-library button:disabled { opacity: .5; cursor: wait; }
+
+.touch-controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; padding: 10px 6px 2px; touch-action: none; user-select: none; }
+.touch-key { min-width: 72px; min-height: 58px; padding: 8px 12px; border: 1px solid #ffffff45; border-radius: 10px; background: #302137; color: white; touch-action: none; }
+.touch-key strong, .touch-key span { display: block; pointer-events: none; }
+.touch-key span { margin-top: 3px; color: #c6bdcc; font-size: .78rem; }
+.touch-key:active { background: #c33d78; border-color: #ffb1d3; transform: scale(.96); }
+@media (pointer: fine) and (min-width: 900px) { .touch-controls { opacity: .72; } }
