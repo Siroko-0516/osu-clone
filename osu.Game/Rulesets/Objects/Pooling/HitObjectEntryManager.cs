@@ -43,6 +43,11 @@ namespace osu.Game.Rulesets.Objects.Pooling
         /// </remarks>
         private readonly Dictionary<HitObjectLifetimeEntry, HitObject> parentMap = new Dictionary<HitObjectLifetimeEntry, HitObject>();
 
+        public void EnsureCapacity(int capacity)
+        {
+            entryMap.EnsureCapacity(capacity);
+        }
+
         public void Add(HitObjectLifetimeEntry entry, HitObject? parent)
         {
             HitObject hitObject = entry.HitObject;
