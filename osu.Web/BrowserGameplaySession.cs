@@ -73,6 +73,11 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
         // gameplay clock cannot disagree after pausing, resuming or replacing a map.
         ((IBindable<bool>)DrawableRuleset.IsPaused).BindTo(Clock.IsPaused);
 
+        // BrowserGameplaySession replaces Player, so it must preserve Player's
+        // judgement pipeline for every ruleset.
+        DrawableRuleset.NewResult += applyResult;
+        DrawableRuleset.RevertResult += revertResult;
+
         InternalChild = Clock;
     }
 
@@ -97,10 +102,25 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
     public void Restart() => Clock.Reset(StartTime, startClock: true);
     public void Seek(double time) => Clock.Seek(Math.Max(0, time));
 
+    private void applyResult(osu.Game.Rulesets.Judgements.JudgementResult result)
+    {
+        HealthProcessor.ApplyResult(result);
+        ScoreProcessor.ApplyResult(result);
+        GameplayState.ApplyResult(result);
+    }
+
+    private void revertResult(osu.Game.Rulesets.Judgements.JudgementResult result)
+    {
+        HealthProcessor.RevertResult(result);
+        ScoreProcessor.RevertResult(result);
+    }
+
     protected override void Dispose(bool isDisposing)
     {
         if (isDisposing)
         {
+            DrawableRuleset.NewResult -= applyResult;
+            DrawableRuleset.RevertResult -= revertResult;
             Clock.Stop();
             Track.Dispose();
         }
