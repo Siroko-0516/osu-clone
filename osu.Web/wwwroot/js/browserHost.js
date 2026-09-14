@@ -162,47 +162,41 @@ function prepareFrameworkFrame(state) {
     const liveFloatCount = Math.min(state.length - 8, Math.max(0, Math.floor(state[4])));
     const quadCount = Math.floor(liveFloatCount / 36);
     const frameEnd = 8 + quadCount * 36;
-    const vertexByteLength = quadCount * 4 * 9 * Float32Array.BYTES_PER_ELEMENT;
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
-    if (frameworkBufferCapacity < vertexByteLength) {
-        frameworkBufferCapacity = Math.max(4096, 2 ** Math.ceil(Math.log2(vertexByteLength)));
-        gl.bufferData(gl.ARRAY_BUFFER, frameworkBufferCapacity, gl.DYNAMIC_DRAW);
-    }
-    if (vertexByteLength > 0)
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, state, 8, quadCount * 36);
-
-    if (frameworkIndexCapacity < quadCount) {
-        frameworkIndexCapacity = Math.max(64, 2 ** Math.ceil(Math.log2(quadCount)));
-        const indices = new Uint32Array(frameworkIndexCapacity * 6);
-        for (let quad = 0; quad < frameworkIndexCapacity; quad++) {
-            const vertex = quad * 4;
-            const index = quad * 6;
-            indices[index] = vertex;
-            indices[index + 1] = vertex + 1;
-            indices[index + 2] = vertex + 2;
-            indices[index + 3] = vertex + 2;
-            indices[index + 4] = vertex + 3;
-            indices[index + 5] = vertex;
-        }
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameworkIndexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+    const required = quadCount * 48;
+    if (frameworkVertices.length < required) {
+        let capacity = Math.max(48, frameworkVertices.length);
+        while (capacity < required) capacity *= 2;
+        frameworkVertices = new Float32Array(capacity);
     }
 
+    let target = 0;
     frameworkDrawCount = 0;
     let previousTexture = -1;
-    for (let quad = 0, offset = 8; offset + 35 < frameEnd; quad++, offset += 36) {
+    for (let offset = 8; offset + 35 < frameEnd; offset += 36) {
         const texture = state[offset + 8];
         if (texture !== previousTexture) {
-            frameworkDrawStarts[frameworkDrawCount] = quad * 6;
+            frameworkDrawStarts[frameworkDrawCount] = target / 8;
             frameworkDrawCounts[frameworkDrawCount] = 0;
             frameworkDrawTextures[frameworkDrawCount] = texture;
             frameworkDrawCount++;
             previousTexture = texture;
         }
+        for (const vertex of quadTriangleOrder) {
+            const source = offset + vertex * 9;
+            for (let component = 0; component < 8; component++)
+                frameworkVertices[target++] = state[source + component];
+        }
         frameworkDrawCounts[frameworkDrawCount - 1] += 6;
     }
 
+    gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
+    const byteLength = target * Float32Array.BYTES_PER_ELEMENT;
+    if (frameworkBufferCapacity < byteLength) {
+        frameworkBufferCapacity = Math.max(4096, 2 ** Math.ceil(Math.log2(byteLength)));
+        gl.bufferData(gl.ARRAY_BUFFER, frameworkBufferCapacity, gl.DYNAMIC_DRAW);
+    }
+    if (target > 0)
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, frameworkVertices, 0, target);
     frameworkFramePrepared = true;
 }
 
@@ -216,17 +210,16 @@ function drawFrameworkFrame(state) {
     gl.enableVertexAttribArray(frameworkPosition);
     gl.enableVertexAttribArray(frameworkColour);
     gl.enableVertexAttribArray(frameworkTexCoord);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, frameworkIndexBuffer);
-    gl.vertexAttribPointer(frameworkPosition, 2, gl.FLOAT, false, 36, 0);
-    gl.vertexAttribPointer(frameworkColour, 4, gl.FLOAT, false, 36, 8);
-    gl.vertexAttribPointer(frameworkTexCoord, 2, gl.FLOAT, false, 36, 24);
+    gl.vertexAttribPointer(frameworkPosition, 2, gl.FLOAT, false, 32, 0);
+    gl.vertexAttribPointer(frameworkColour, 4, gl.FLOAT, false, 32, 8);
+    gl.vertexAttribPointer(frameworkTexCoord, 2, gl.FLOAT, false, 32, 24);
     gl.uniform2f(frameworkViewport, viewportWidth, viewportHeight);
 
     for (let index = 0; index < frameworkDrawCount; index++) {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, frameworkTextures.get(frameworkDrawTextures[index]) ?? fallbackTexture);
         gl.uniform1i(frameworkSampler, 0);
-        gl.drawElements(gl.TRIANGLES, frameworkDrawCounts[index], gl.UNSIGNED_INT, frameworkDrawStarts[index] * Uint32Array.BYTES_PER_ELEMENT);
+        gl.drawArrays(gl.TRIANGLES, frameworkDrawStarts[index], frameworkDrawCounts[index]);
     }
 }
 
