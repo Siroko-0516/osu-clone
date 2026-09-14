@@ -296,15 +296,16 @@ namespace osu.Game.Rulesets.UI
         private readonly Dictionary<Type, IDrawablePool> pools = new Dictionary<Type, IDrawablePool>();
 
         /// <summary>
-        /// Adds a <see cref="HitObjectLifetimeEntry"/> for a pooled <see cref="HitObject"/> to this <see cref="Playfield"/>.
-        /// </summary>
-        /// <param name="hitObject"></param>
-        /// <summary>
         /// Reserves storage before a beatmap is registered, avoiding repeated dictionary
         /// growth and garbage collections on object-heavy maps.
         /// </summary>
+        /// <param name="count">The number of top-level hit objects that will be registered.</param>
         internal void PrepareForHitObjects(int count) => entryManager.EnsureCapacity(count);
 
+        /// <summary>
+        /// Adds a <see cref="HitObjectLifetimeEntry"/> for a pooled <see cref="HitObject"/> to this <see cref="Playfield"/>.
+        /// </summary>
+        /// <param name="hitObject"></param>
         public virtual void Add(HitObject hitObject)
         {
             var entry = CreateLifetimeEntry(hitObject);
