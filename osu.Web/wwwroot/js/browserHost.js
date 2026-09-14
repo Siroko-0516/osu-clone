@@ -416,6 +416,10 @@ export function stopBrowserHost() {
     frameworkDrawCount = 0;
 }
 
+export function setVirtualKey(code, pressed) {
+    inputBridge?.setKey(code, pressed);
+}
+
 export function setRuleset(mode, keyboardCodes = []) {
     inputBridge?.reset();
     ruleset = mode;
