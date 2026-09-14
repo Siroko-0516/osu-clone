@@ -233,7 +233,7 @@ function drawFrameworkFrame(state) {
 export async function startBrowserHost(target, dotnetReference) {
     canvas = target;
     dotnet = dotnetReference;
-    gl = canvas.getContext("webgl2", { alpha: false, antialias: true, powerPreference: "high-performance" });
+    gl = canvas.getContext("webgl2", { alpha: false, antialias: false, powerPreference: "high-performance", desynchronized: true });
 
     if (!gl) {
         await dotnet.invokeMethodAsync("ReportRenderer", "WebGL2 unavailable");
