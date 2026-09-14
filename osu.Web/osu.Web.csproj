@@ -6,7 +6,7 @@
     <NullabilityInfoContextSupport>true</NullabilityInfoContextSupport>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
+    <RunAOTCompilation>false</RunAOTCompilation>
   </PropertyGroup>
   <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <!-- Desktop-only transitive shim; BrowserGameHost never executes it and Mono cannot AOT it. -->
