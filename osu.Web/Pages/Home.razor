@@ -768,7 +768,9 @@
             }
         }
 
-        if (frame % 30 == 0 || gameFailed)
+        // Re-rendering the full Blazor page during gameplay causes periodic
+        // main-thread stalls on phones and tablets.
+        if (frame % 180 == 0 || gameFailed)
             await InvokeAsync(StateHasChanged);
     }
 
@@ -776,7 +778,8 @@
     public Task ReportInput(string kind, double x, double y)
     {
         inputStatus = $"{selectedMode}: {kind} · {x:0}, {y:0}";
-        return InvokeAsync(StateHasChanged);
+        // Batch diagnostic UI updates outside the latency-sensitive input path.
+        return Task.CompletedTask;
     }
 
     private static string FormatException(Exception exception)
