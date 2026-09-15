@@ -266,8 +266,8 @@ export async function startBrowserHost(target, dotnetReference) {
     const resize = () => {
         const rect = canvas.getBoundingClientRect();
         const cssPixels = Math.max(1, rect.width * rect.height);
-        const coarsePointer = matchMedia("(pointer: coarse)").matches;
-        const memory = navigator.deviceMemory || 4;
+        const coarsePointer = globalThis.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+        const memory = globalThis.navigator?.deviceMemory || 4;
         const pixelBudget = coarsePointer ? (memory <= 4 ? 700000 : 1000000) : 1600000;
         const densityLimit = coarsePointer ? 1.25 : 1.5;
         canvasScale = Math.max(0.65, Math.min(
