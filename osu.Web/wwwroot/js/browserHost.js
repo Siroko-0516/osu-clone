@@ -35,6 +35,7 @@ const frameworkTextures = new Map();
 const listeners = [];
 let lastPointerReport = 0;
 let lastKeyboardState = "";
+let canvasScale = 1;
 
 const rulesetKeys = {
     osu: new Set(["KeyZ", "KeyX"]),
@@ -263,18 +264,27 @@ export async function startBrowserHost(target, dotnetReference) {
     };
 
     const resize = () => {
-        const ratio = window.devicePixelRatio || 1;
         const rect = canvas.getBoundingClientRect();
-        canvas.width = Math.max(1, Math.round(rect.width * ratio));
-        canvas.height = Math.max(1, Math.round(rect.height * ratio));
+        const cssPixels = Math.max(1, rect.width * rect.height);
+        const coarsePointer = matchMedia("(pointer: coarse)").matches;
+        const memory = navigator.deviceMemory || 4;
+        const pixelBudget = coarsePointer ? (memory <= 4 ? 700000 : 1000000) : 1600000;
+        const densityLimit = coarsePointer ? 1.25 : 1.5;
+        canvasScale = Math.max(0.65, Math.min(
+            window.devicePixelRatio || 1,
+            densityLimit,
+            Math.sqrt(pixelBudget / cssPixels)));
+        canvas.width = Math.max(1, Math.round(rect.width * canvasScale));
+        canvas.height = Math.max(1, Math.round(rect.height * canvasScale));
         gl.viewport(0, 0, canvas.width, canvas.height);
     };
 
     const position = event => {
         const rect = canvas.getBoundingClientRect();
-        const ratio = window.devicePixelRatio || 1;
-        pointer.x = Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * ratio));
-        pointer.y = Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * ratio));
+        const scaleX = canvas.width / Math.max(1, rect.width);
+        const scaleY = canvas.height / Math.max(1, rect.height);
+        pointer.x = Math.max(0, Math.min(canvas.width, (event.clientX - rect.left) * scaleX));
+        pointer.y = Math.max(0, Math.min(canvas.height, (event.clientY - rect.top) * scaleY));
     };
 
     listen(canvas, "pointermove", event => {
