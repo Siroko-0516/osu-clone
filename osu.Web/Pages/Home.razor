@@ -737,7 +737,7 @@
                     if (frame % visualTransferDivisor == 0)
                     {
                         byte[] state = gameHost.GetBrowserFrameState();
-                        lastFrameFloatCount = Math.Max(0, (int)System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(state)[4]);
+                        lastFrameFloatCount = Math.Max(0, (int)BitConverter.ToSingle(state, 4 * sizeof(float)));
                         await module.InvokeVoidAsync("applyFrameworkFrame", state);
                     }
                 }
