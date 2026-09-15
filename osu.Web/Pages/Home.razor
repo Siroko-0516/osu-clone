@@ -190,6 +190,7 @@
     private WebGameHost? gameHost;
     private BrowserBootstrapGame? game;
     private long gameFrameCount;
+    private int lastFrameFloatCount;
     private string rendererStatus = "initialising";
     private string gameStatus = "waiting";
     private string inputStatus = "waiting";
@@ -728,15 +729,17 @@
                         // params object[] expands it into individual upload arguments.
                         await module.InvokeVoidAsync("applyTextureUploads", (object)uploads);
 
-                    byte[] state = gameHost.GetBrowserFrameState();
-                    int liveFloatCount = state.Length / sizeof(float) - 8;
-                    // Keep simulation, input and audio at display refresh rate, but avoid
-                    // monopolising the browser UI thread with very large interop transfers.
-                    int visualTransferDivisor = liveFloatCount > 120000 ? 3
-                                                : liveFloatCount > 60000 ? 2
-                                                : 1;
+                    // Decide before creating the packed frame array. On mobile, allocating
+                    // a large byte[] only to skip its transfer still fragments the WASM heap.
+                    int visualTransferDivisor = lastFrameFloatCount > 120000 ? 4
+                                                : lastFrameFloatCount > 60000 ? 3
+                                                : 2;
                     if (frame % visualTransferDivisor == 0)
+                    {
+                        byte[] state = gameHost.GetBrowserFrameState();
+                        lastFrameFloatCount = Math.Max(0, state.Length / sizeof(float) - 8);
                         await module.InvokeVoidAsync("applyFrameworkFrame", state);
+                    }
                 }
                 gameFrameCount++;
 
