@@ -421,11 +421,15 @@ export function setRuleset(mode, keyboardCodes = []) {
 }
 
 export function applyFrameworkFrame(state) {
-    // Blazor transfers byte[] without JSON-encoding every float. Reinterpret the
-    // same interop buffer directly as the renderer's packed float stream.
-    frameworkFrame = state instanceof Uint8Array
+    // Never retain a view into the managed WebAssembly heap. Keeping that view as
+    // the current frame pins/references a new .NET byte[] every transfer and
+    // eventually exhausts memory on mobile browsers.
+    const source = state instanceof Uint8Array
         ? new Float32Array(state.buffer, state.byteOffset, state.byteLength / Float32Array.BYTES_PER_ELEMENT)
         : state;
+    if (!(frameworkFrame instanceof Float32Array) || frameworkFrame.length !== source.length)
+        frameworkFrame = new Float32Array(source.length);
+    frameworkFrame.set(source);
     frameworkFramePrepared = false;
 }
 
