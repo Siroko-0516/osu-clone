@@ -205,6 +205,7 @@
         _ => "Keyboard input"
     };
     private bool gameFailed;
+    private int consecutiveFrameFailures;
     private BrowserSettingsStore? settingsStore;
     private BrowserKeyBindingStore? keyBindingStore;
     private string keyBindingStatus = "Loading";
@@ -742,6 +743,7 @@
                     }
                 }
                 gameFrameCount++;
+                consecutiveFrameFailures = 0;
 
                 if (!string.IsNullOrEmpty(game?.GameplayError)
                     && !selectionStatus.StartsWith("Gameplay failed:", StringComparison.Ordinal))
@@ -756,21 +758,21 @@
             }
             catch (OutOfMemoryException exception)
             {
-                // Do not permanently disable the frame/input pump. Release temporary
-                // interop buffers and retry on the following browser frame.
+                consecutiveFrameFailures++;
                 GC.Collect();
                 gameStatus = "Recovering browser memory: " + exception.Message;
             }
             catch (Exception exception)
             {
-                gameFailed = true;
-                gameStatus = FormatException(exception);
+                // Retry transient rendering and interop failures on the next frame.
+                consecutiveFrameFailures++;
+                gameStatus = $"Frame recovery attempt {consecutiveFrameFailures}: {FormatException(exception)}";
             }
         }
 
         // Re-rendering the full Blazor page during gameplay causes periodic
         // main-thread stalls on phones and tablets.
-        if (frame % 180 == 0 || gameFailed)
+        if (frame % 180 == 0 || gameFailed || consecutiveFrameFailures > 0)
             await InvokeAsync(StateHasChanged);
     }
 
