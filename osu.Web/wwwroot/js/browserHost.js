@@ -160,7 +160,8 @@ function createFrameworkProgram() {
 }
 
 function prepareFrameworkFrame(state) {
-    const quadCount = Math.floor((state.length - 8) / 36);
+    const liveFloatCount = Math.min(state.length - 8, Math.max(0, Math.floor(state[4] || state.length - 8)));
+    const quadCount = Math.floor(liveFloatCount / 36);
     const frameEnd = 8 + quadCount * 36;
     const required = quadCount * 48;
     if (frameworkVertices.length < required) {
@@ -437,9 +438,10 @@ export function applyFrameworkFrame(state) {
     const source = state instanceof Uint8Array
         ? new Float32Array(state.buffer, state.byteOffset, state.byteLength / Float32Array.BYTES_PER_ELEMENT)
         : state;
-    if (!(frameworkFrame instanceof Float32Array) || frameworkFrame.length !== source.length)
-        frameworkFrame = new Float32Array(source.length);
-    frameworkFrame.set(source);
+    const liveLength = Math.min(source.length, 8 + Math.max(0, Math.floor(source[4] || source.length - 8)));
+    if (!(frameworkFrame instanceof Float32Array) || frameworkFrame.length !== liveLength)
+        frameworkFrame = new Float32Array(liveLength);
+    frameworkFrame.set(source.subarray(0, liveLength));
     frameworkFramePrepared = false;
 }
 
