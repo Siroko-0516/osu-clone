@@ -731,9 +731,9 @@
 
                     // Decide before creating the packed frame array. On mobile, allocating
                     // a large byte[] only to skip its transfer still fragments the WASM heap.
-                    int visualTransferDivisor = lastFrameFloatCount > 120000 ? 4
-                                                : lastFrameFloatCount > 60000 ? 3
-                                                : 2;
+                    int visualTransferDivisor = lastFrameFloatCount > 120000 ? 3
+                                                : lastFrameFloatCount > 60000 ? 2
+                                                : 1;
                     if (frame % visualTransferDivisor == 0)
                     {
                         byte[] state = gameHost.GetBrowserFrameState();
