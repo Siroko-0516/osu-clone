@@ -66,9 +66,9 @@ try {
             const until=Date.now()+5000;
             while(Date.now()<until) {
                 for(const key of ['d','f','j','k'])await page.keyboard.down(key);
-                await page.waitForTimeout(25);
+                await page.waitForTimeout(75);
                 for(const key of ['d','f','j','k'])await page.keyboard.up(key);
-                await page.waitForTimeout(25);
+                await page.waitForTimeout(75);
             }
         }
         console.log(`STATE mode ${mode}:`,await page.evaluate(async()=>

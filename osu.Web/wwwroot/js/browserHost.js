@@ -436,7 +436,7 @@ export async function startBrowserHost(target, dotnetReference) {
             pumpPending = true;
             pumpStarted = performance.now();
             dotnet.invokeMethodAsync("PumpGameFrame", frame, inputBridge.drain(), canvas.width, canvas.height)
-                .catch(error => reportHostFailure(`Game update failed: ${error.message ?? error}`))
+                .catch(error => { if (generation === hostGeneration) reportHostFailure(`Game update failed: ${error.message ?? error}`); })
                 .finally(() => { if (generation === hostGeneration) pumpPending = false; });
         }
     };
@@ -622,6 +622,6 @@ function reportHostFailure(message) {
 
 // On-demand diagnostics for reproducing loading/clock stalls without a per-frame UI refresh.
 export async function playerDiagnostics() {
-    return {frame,pumpPending,drawFailures,hostFailureReported,memory:rendererMemory(),
+    return {frame,pumpPending,drawFailures,hostFailureReported,gameplayActive,heldKeys:inputBridge?.heldKeys(),memory:rendererMemory(),
         managed:dotnet ? await dotnet.invokeMethodAsync('GetPlayerDiagnostics') : null};
 }

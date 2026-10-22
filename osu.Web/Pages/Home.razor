@@ -811,6 +811,11 @@
     {
         gameFrameCount, gameFailed, gameStatus, selectionStatus, consecutiveFrameFailures,
         hostState = gameHost?.ExecutionState.ToString(),
+        inputStatus, receivedInput = gameHost?.BrowserInput.ReceivedEvents,
+        heldKeys = gameHost?.BrowserInput.HeldKeys,
+        processedInput = game?.ProcessedInputEvents,
+        actionPresses = game?.ActionPressCount,
+        lastAction = game?.LastAction,
         loadingDifficulty, gameplayPaused, audioNeedsGesture,
         ready = game?.GameplaySession?.IsReady,
         time = game?.GameplaySession?.Clock.CurrentTime,
