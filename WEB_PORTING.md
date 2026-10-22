@@ -4,11 +4,11 @@ This branch is for a real browser port of the existing osu!lazer source tree. It
 
 ## Current milestone
 
-The framework diagnostic now runs in .NET WebAssembly, renders geometry, receives keyboard and pointer input, and uses browser-backed tracks and samples. Original `OsuGame` startup remains blocked by Realm's native `realm-wrappers` dependency. Original menus, beatmap selection, gameplay, and results are not running.
+The browser shell runs in .NET WebAssembly with song import/selection, original ruleset gameplay sessions, pause/restart, results and locally saved scores. It uses browser-backed tracks, samples and IndexedDB. The original `OsuGame` menus and results are not ported; native Realm dependencies are bypassed by the browser shell. See the verification sections below: compiled integration and browser playthrough coverage are distinct.
 
-The default page runs `BrowserBootstrapGame`. Use **Attempt original OsuGame startup** (or `?original=true`) to run the real `OsuGame` startup path and report its first error. Switching runtimes reloads the page; changing a label is not evidence of successful game startup.
+The default page runs `BrowserBootstrapGame`. Open **Diagnostics** (`?diagnostics=true`) for framework probes. The legacy `?original=true` option selects `BrowserOsuGame`, which currently inherits the same bootstrap shell; it does not run the original desktop `OsuGame`. Switching runtimes reloads the page.
 
-## Verified on 2026-09-08
+## Historical verification on 2026-09-08
 
 - Restored the Blazor synchronization context around framework execution; frames advance continuously.
 - Corrected texture-array interop and atlas upload coordinates; framework boxes and cursor render.
@@ -75,3 +75,13 @@ The audio thread also skips native BASS CPU statistics in WebAssembly. That init
 Validation: 13 JavaScript tests pass, including 100 fluctuating frame transfers, peak-buffer reclamation, empty-frame handling, CPU/GPU teardown and stale callbacks. These are mocked WebGL tests, not an end-to-end browser memory benchmark. The Release WebAssembly host build passes using direct MSBuild invocation (the SDK CLI itself fails with `Process.GetStat`/`get_StartTimeCore` in this environment). All 10 managed checks pass, including original ruleset settings, archive import, persistence, and four-ruleset beatmap conversion. Actual browser playthroughs remain unverified: installing the headless browser failed with a truncated download. PR builds run without publishing to GitHub Pages.
 
 This update does not complete the original-client port. Full renderer shader/mask/framebuffer support, the original menu/results screens, and audio-timing verification for all four rulesets remain open. The result panel added here belongs to the browser shell.
+
+## Browser player flow (2026-10-22)
+
+- Responsive song library with search, 20-set pagination, separate per-difficulty audio previews and settings for the four modes.
+- Dedicated gameplay screen, live score/accuracy/combo HUD, Esc or focus-loss pause, resume, fresh restart, fullscreen and touch controls. Menu navigation keeps normal keyboard behaviour.
+- Completed attempts are saved through the existing IndexedDB score collection and restored into the recent-score list on reload. A storage failure preserves the visible result and reports the failure.
+- Standard alpha blending is enabled for browser quads. This does not implement the framework's full blend states, masks, shaders or framebuffer pipeline.
+- HUD refresh is isolated to its own component at 5 Hz and stops refreshing while paused. Song pages and temporary file hydration remain bounded.
+
+Validation: the Release managed WebAssembly build and all 24 JavaScript/managed checks pass locally, including failed score saves, retry, and independent replay persistence. The web CI now installs Chromium and runs generated, self-contained four-mode maps through import, pause/resume, completion, score save and reload, with screenshots uploaded even on failure. These playthrough checks deliberately miss the notes; they do not establish input timing accuracy or visual parity with the desktop client.

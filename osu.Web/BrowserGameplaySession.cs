@@ -3,6 +3,8 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Audio.Track;
+using osu.Framework.Timing;
+using osu.Game.Beatmaps.ControlPoints;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -20,7 +22,7 @@ namespace osu.Web;
 /// Owns one browser gameplay attempt and supplies the same core dependency
 /// boundary that the desktop Player normally provides.
 /// </summary>
-public sealed partial class BrowserGameplaySession : CompositeDrawable
+public sealed partial class BrowserGameplaySession : CompositeDrawable, IBeatSyncProvider
 {
     public IBeatmap Beatmap { get; }
     public DrawableRuleset DrawableRuleset { get; }
@@ -33,6 +35,10 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
     public double StartTime => DrawableRuleset.GameplayStartTime;
 
     public bool IsClosed => IsDisposed;
+
+    ControlPointInfo IBeatSyncProvider.ControlPoints => Beatmap.ControlPointInfo;
+    IClock IBeatSyncProvider.Clock => Clock;
+    public ChannelAmplitudes CurrentAmplitudes => Track.CurrentAmplitudes;
 
     public bool IsReady => DrawableRuleset.IsLoaded && DrawableRuleset.Playfield.IsLoaded;
 
@@ -92,6 +98,7 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
     protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
     {
         var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
+        dependencies.CacheAs<IBeatSyncProvider>(this);
         dependencies.CacheAs(DrawableRuleset);
         dependencies.CacheAs(ScoreProcessor);
         dependencies.CacheAs(HealthProcessor);
