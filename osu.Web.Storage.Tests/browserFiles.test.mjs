@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { indexedDB } from 'fake-indexeddb';
+import { indexedDB, IDBKeyRange } from 'fake-indexeddb';
 import { createBrowserFileStore } from '../osu.Web/wwwroot/js/browserFiles.mjs';
+
+globalThis.IDBKeyRange = IDBKeyRange;
 
 test('binary files persist, replace atomically, and reject unsafe paths', async () => {
     const name = `files-${crypto.randomUUID()}`;
@@ -13,21 +15,21 @@ test('binary files persist, replace atomically, and reject unsafe paths', async 
     await store.close();
 
     store = createBrowserFileStore(indexedDB, name);
-    let restored = await store.list();
+    let restored = await Promise.all((await store.keys('osu-web/')).map(path => store.get(path)));
     assert.deepEqual(restored.map(entry => entry.path).sort(), ['osu-web/skins/icon.png', 'osu-web/tracks/song.bin']);
     assert.deepEqual([...restored.find(entry => entry.path.endsWith('song.bin')).data], [0, 1, 127, 255]);
     await assert.rejects(store.replaceAll([{ path: '../escape', data: new Uint8Array([1]) }]));
-    restored = await store.list();
+    restored = await Promise.all((await store.keys('osu-web/')).map(path => store.get(path)));
     assert.equal(restored.length, 2, 'validation failure must retain the committed snapshot');
     assert.equal(await store.put([{ path: 'osu-web/new.dat', data: new Uint8Array([6, 7]) }]), 1);
-    assert.deepEqual((await store.list()).map(entry => entry.path).sort(), [
+    assert.deepEqual((await Promise.all((await store.keys('osu-web/')).map(path => store.get(path)))).map(entry => entry.path).sort(), [
         'osu-web/new.dat',
         'osu-web/skins/icon.png',
         'osu-web/tracks/song.bin'
     ], 'incremental writes must preserve unrelated files');
     await assert.rejects(store.put([{ path: '../escape', data: new Uint8Array([1]) }]));
-    assert.equal((await store.list()).length, 3, 'failed incremental validation must not modify storage');
+    assert.equal((await Promise.all((await store.keys('osu-web/')).map(path => store.get(path)))).length, 3, 'failed incremental validation must not modify storage');
     await store.replaceAll([{ path: 'osu-web/only.dat', data: new Uint8Array([5]) }]);
-    assert.deepEqual((await store.list()).map(entry => entry.path), ['osu-web/only.dat']);
+    assert.deepEqual((await Promise.all((await store.keys('osu-web/')).map(path => store.get(path)))).map(entry => entry.path), ['osu-web/only.dat']);
     await store.close();
 });

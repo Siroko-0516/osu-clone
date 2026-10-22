@@ -39,6 +39,7 @@ public sealed class WebAudioTrack : Track
 
     private State ReadState() => module.Invoke<State>("trackState", id);
     public override bool IsDummyDevice => false;
+    public bool RequiresGesture => !IsDisposed && ReadState().Blocked;
     public string LoadError => IsDisposed ? string.Empty : ReadState().Error;
     public override bool IsLoaded => !IsDisposed && ReadState().Loaded;
     public override bool IsRunning => !IsDisposed && ReadState().Running;
@@ -74,6 +75,7 @@ public sealed class WebAudioTrack : Track
         public bool Loaded { get; set; }
         public bool Running { get; set; }
         public bool Ended { get; set; }
+        public bool Blocked { get; set; }
         public string Error { get; set; } = "";
     }
 }

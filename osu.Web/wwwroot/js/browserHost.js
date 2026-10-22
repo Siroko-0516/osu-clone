@@ -1,3 +1,4 @@
+import { createFrameworkDraw } from './browserDraw.mjs';
 import { attachBrowserInput } from './browserInput.mjs';
 
 let inputBridge;
@@ -7,10 +8,11 @@ let gl;
 let dotnet;
 let program;
 let frameworkProgram;
+let frameworkDraw;
 let frameworkBuffer;
 let frameworkBufferCapacity = 0;
-let frameworkIndexBuffer;
-let frameworkIndexCapacity = 0;
+let diagnosticBuffer;
+let hostGeneration = 0;
 let fallbackTexture;
 let frame = 0;
 let pumpPending = false;
@@ -19,6 +21,7 @@ let activePointerId = null;
 const keys = new Set();
 let ruleset = "osu";
 let frameworkFrame;
+let frameworkFrameLength = 0;
 let frameworkFramePrepared = false;
 let frameworkVertices = new Float32Array(0);
 const frameworkDrawStarts = [];
@@ -36,6 +39,11 @@ const listeners = [];
 let lastPointerReport = 0;
 let lastKeyboardState = "";
 let canvasScale = 1;
+let resizeCanvas;
+let gameplayActive = true;
+let pumpStarted = 0;
+let drawFailures = 0;
+let hostFailureReported = false;
 
 const rulesetKeys = {
     osu: new Set(["KeyZ", "KeyX"]),
@@ -134,41 +142,47 @@ function shader(type, source) {
     const result = gl.createShader(type);
     gl.shaderSource(result, source);
     gl.compileShader(result);
-    if (!gl.getShaderParameter(result, gl.COMPILE_STATUS))
-        throw new Error(gl.getShaderInfoLog(result));
+    if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(result);
+        gl.deleteShader(result);
+        throw new Error(message);
+    }
     return result;
 }
 
-function createProgram() {
+function linkProgram(vertex, fragment) {
     const result = gl.createProgram();
-    gl.attachShader(result, shader(gl.VERTEX_SHADER, vertexSource));
-    gl.attachShader(result, shader(gl.FRAGMENT_SHADER, fragmentSource));
-    gl.linkProgram(result);
-    if (!gl.getProgramParameter(result, gl.LINK_STATUS))
-        throw new Error(gl.getProgramInfoLog(result));
-    return result;
+    const shaders = [];
+    try {
+        shaders.push(shader(gl.VERTEX_SHADER, vertex));
+        shaders.push(shader(gl.FRAGMENT_SHADER, fragment));
+        for (const compiled of shaders) gl.attachShader(result, compiled);
+        gl.linkProgram(result);
+        if (!gl.getProgramParameter(result, gl.LINK_STATUS))
+            throw new Error(gl.getProgramInfoLog(result));
+        return result;
+    } catch (error) {
+        gl.deleteProgram(result);
+        throw error;
+    } finally {
+        for (const compiled of shaders) gl.deleteShader(compiled);
+    }
 }
 
-function createFrameworkProgram() {
-    const result = gl.createProgram();
-    gl.attachShader(result, shader(gl.VERTEX_SHADER, frameworkVertexSource));
-    gl.attachShader(result, shader(gl.FRAGMENT_SHADER, frameworkFragmentSource));
-    gl.linkProgram(result);
-    if (!gl.getProgramParameter(result, gl.LINK_STATUS))
-        throw new Error(gl.getProgramInfoLog(result));
-    return result;
+// Grow geometrically and release peak allocations after a substantially smaller scene.
+function capacityFor(required, current, minimum) {
+    if (required <= current && (current <= minimum || required > current / 4)) return current;
+    return Math.max(minimum, 2 ** Math.ceil(Math.log2(Math.max(1, required))));
 }
 
 function prepareFrameworkFrame(state) {
-    const liveFloatCount = Math.min(state.length - 8, Math.max(0, Math.floor(state[4] || state.length - 8)));
+    const liveFloatCount = frameworkFrameLength - 8;
     const quadCount = Math.floor(liveFloatCount / 36);
     const frameEnd = 8 + quadCount * 36;
     const required = quadCount * 48;
-    if (frameworkVertices.length < required) {
-        let capacity = Math.max(48, frameworkVertices.length);
-        while (capacity < required) capacity *= 2;
+    const capacity = capacityFor(required, frameworkVertices.length, 4096);
+    if (frameworkVertices.length !== capacity)
         frameworkVertices = new Float32Array(capacity);
-    }
 
     let target = 0;
     frameworkDrawCount = 0;
@@ -190,10 +204,14 @@ function prepareFrameworkFrame(state) {
         frameworkDrawCounts[frameworkDrawCount - 1] += 6;
     }
 
+    frameworkDrawStarts.length = frameworkDrawCount;
+    frameworkDrawCounts.length = frameworkDrawCount;
+    frameworkDrawTextures.length = frameworkDrawCount;
     gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
     const byteLength = target * Float32Array.BYTES_PER_ELEMENT;
-    if (frameworkBufferCapacity < byteLength) {
-        frameworkBufferCapacity = Math.max(4096, 2 ** Math.ceil(Math.log2(byteLength)));
+    const bufferCapacity = capacityFor(byteLength, frameworkBufferCapacity, 16384);
+    if (frameworkBufferCapacity !== bufferCapacity) {
+        frameworkBufferCapacity = bufferCapacity;
         gl.bufferData(gl.ARRAY_BUFFER, frameworkBufferCapacity, gl.DYNAMIC_DRAW);
     }
     if (target > 0)
@@ -202,10 +220,18 @@ function prepareFrameworkFrame(state) {
 }
 
 function drawFrameworkFrame(state) {
+    if (state[5] === 1) {
+        frameworkDraw ??= createFrameworkDraw(gl, frameworkTextures, fallbackTexture);
+        frameworkDraw.render(state, frameworkFrameLength, state[6] || canvas.width, state[7] || canvas.height, !frameworkFramePrepared);
+        frameworkFramePrepared = true;
+        return;
+    }
     const viewportWidth = state[6] > 0 ? state[6] : canvas.width;
     const viewportHeight = state[7] > 0 ? state[7] : canvas.height;
     if (!frameworkFramePrepared) prepareFrameworkFrame(state);
 
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(frameworkProgram);
     gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
     gl.enableVertexAttribArray(frameworkPosition);
@@ -225,6 +251,8 @@ function drawFrameworkFrame(state) {
 }
 
 export async function startBrowserHost(target, dotnetReference) {
+    stopBrowserHost();
+    const generation = hostGeneration;
     canvas = target;
     dotnet = dotnetReference;
     gl = canvas.getContext("webgl2", { alpha: false, antialias: false, powerPreference: "high-performance", desynchronized: true });
@@ -234,10 +262,9 @@ export async function startBrowserHost(target, dotnetReference) {
         return false;
     }
 
-    program = createProgram();
-    frameworkProgram = createFrameworkProgram();
+    program = linkProgram(vertexSource, fragmentSource);
+    frameworkProgram = linkProgram(frameworkVertexSource, frameworkFragmentSource);
     frameworkBuffer = gl.createBuffer();
-    frameworkIndexBuffer = gl.createBuffer();
     frameworkPosition = gl.getAttribLocation(frameworkProgram, "a_position");
     frameworkColour = gl.getAttribLocation(frameworkProgram, "a_colour");
     frameworkTexCoord = gl.getAttribLocation(frameworkProgram, "a_tex_coord");
@@ -248,7 +275,7 @@ export async function startBrowserHost(target, dotnetReference) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
-    const buffer = gl.createBuffer();
+    const buffer = diagnosticBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
     const positionLocation = gl.getAttribLocation(program, "a_position");
@@ -264,7 +291,7 @@ export async function startBrowserHost(target, dotnetReference) {
         keys: gl.getUniformLocation(program, "u_keys")
     };
 
-    const resize = () => {
+    const resize = resizeCanvas = () => {
         const rect = canvas.getBoundingClientRect();
         const cssPixels = Math.max(1, rect.width * rect.height);
         const coarsePointer = globalThis.matchMedia?.("(pointer: coarse)")?.matches ?? false;
@@ -335,7 +362,7 @@ export async function startBrowserHost(target, dotnetReference) {
         const target = event.target;
         if (typeof target?.matches === "function"
             && (target.matches("input, textarea, select") || target.isContentEditable)) return;
-        if (!rulesetKeys[ruleset]?.has(event.code)) return;
+        if (!gameplayActive || !rulesetKeys[ruleset]?.has(event.code)) return;
         event.preventDefault();
         if (event.repeat || keys.has(event.code)) return;
         keys.add(event.code);
@@ -346,14 +373,21 @@ export async function startBrowserHost(target, dotnetReference) {
         event.preventDefault();
         reportKeyboardState(`${event.code} up`);
     }, { capture: true });
-    listen(window, "blur", () => releaseAllKeys());
+    const pause = toggle => {
+        if (dotnet) void dotnet.invokeMethodAsync("PauseFromBrowser", toggle).catch(() => {});
+    };
+    listen(window, "keydown", event => {
+        if (event.code !== "Escape" || event.repeat || event.target?.matches?.("input, textarea, select")) return;
+        pause(true);
+    });
+    listen(window, "blur", () => { releaseAllKeys(); pause(false); });
     listen(document, "visibilitychange", () => {
-        if (document.hidden) releaseAllKeys();
+        if (document.hidden) { releaseAllKeys(); pause(false); }
     });
     listen(window, "resize", resize);
     listen(canvas, "webglcontextlost", event => {
         event.preventDefault();
-        dotnet.invokeMethodAsync("ReportRenderer", "WebGL2 context lost");
+        reportHostFailure("The graphics context was lost. Reload the player to restore rendering.");
     });
 
     resize();
@@ -362,11 +396,17 @@ export async function startBrowserHost(target, dotnetReference) {
     pointer.y = canvas.height / 2;
     await dotnet.invokeMethodAsync("ReportRenderer", `WebGL2 · ${gl.getParameter(gl.RENDERER)}`);
 
+    if (generation !== hostGeneration) return false;
     const render = time => {
+        if (generation !== hostGeneration) return;
+        // Reserve the next turn before invoking either renderer or managed code.
+        // A thrown WebGL error must never permanently kill requestAnimationFrame.
+        animationFrame = requestAnimationFrame(render);
+        try {
         // The first framework frames may contain only the clear colour and viewport
         // while the scene graph is still loading. Keep the diagnostic surface visible
         // until drawable geometry is actually available instead of showing a black box.
-        if (frameworkFrame?.length > 8) {
+        if (frameworkFrameLength >= 8) {
             const [r, g, b, a] = frameworkFrame;
             gl.clearColor(r, g, b, a);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
@@ -384,37 +424,69 @@ export async function startBrowserHost(target, dotnetReference) {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
 
-        frame++;
-        if (!pumpPending) {
-            pumpPending = true;
-            dotnet.invokeMethodAsync("PumpGameFrame", frame, inputBridge.drain(), canvas.width, canvas.height)
-                .finally(() => pumpPending = false);
+        drawFailures = 0;
+        } catch (error) {
+            if (++drawFailures >= 3) reportHostFailure(`Rendering stopped: ${error.message ?? error}`);
         }
-        animationFrame = requestAnimationFrame(render);
+
+        frame++;
+        if (pumpPending && performance.now() - pumpStarted > 20000)
+            reportHostFailure("The game stopped responding while loading or updating a map. Reload the player and try the difficulty again.");
+        if (!pumpPending && !hostFailureReported) {
+            pumpPending = true;
+            pumpStarted = performance.now();
+            dotnet.invokeMethodAsync("PumpGameFrame", frame, inputBridge.drain(), canvas.width, canvas.height)
+                .catch(error => { if (generation === hostGeneration) reportHostFailure(`Game update failed: ${error.message ?? error}`); })
+                .finally(() => { if (generation === hostGeneration) pumpPending = false; });
+        }
     };
     animationFrame = requestAnimationFrame(render);
     return true;
 }
 
 export function stopBrowserHost() {
+    hostGeneration++;
     inputBridge?.dispose();
     inputBridge = undefined;
     if (animationFrame) cancelAnimationFrame(animationFrame);
     for (const remove of listeners.splice(0)) remove();
     animationFrame = undefined;
     pumpPending = false;
+    drawFailures = 0;
+    hostFailureReported = false;
+    globalThis.document?.querySelector?.(".host-failure")?.remove();
     activePointerId = null;
     pointer.down = false;
+    if (gl) {
+        frameworkDraw?.dispose();
+        frameworkDraw = undefined;
+        for (const texture of frameworkTextures.values()) gl.deleteTexture(texture);
+        if (fallbackTexture) gl.deleteTexture(fallbackTexture);
+        if (frameworkBuffer) gl.deleteBuffer(frameworkBuffer);
+        if (diagnosticBuffer) gl.deleteBuffer(diagnosticBuffer);
+        if (frameworkProgram) gl.deleteProgram(frameworkProgram);
+        if (program) gl.deleteProgram(program);
+    }
+    keys.clear();
+    frame = 0;
+    lastKeyboardState = "";
+    lastPointerReport = 0;
+    canvas = undefined;
+    resizeCanvas = undefined;
+    gameplayActive = false;
     dotnet = undefined;
     gl = undefined;
+    program = undefined;
+    diagnosticBuffer = undefined;
     frameworkProgram = undefined;
     frameworkBuffer = undefined;
     frameworkBufferCapacity = 0;
-    frameworkIndexBuffer = undefined;
-    frameworkIndexCapacity = 0;
     fallbackTexture = undefined;
     frameworkTextures.clear();
     frameworkFrame = undefined;
+    frameworkFrameLength = 0;
+    frameworkVertices = new Float32Array(0);
+    frameworkDrawStarts.length = frameworkDrawCounts.length = frameworkDrawTextures.length = 0;
     frameworkFramePrepared = false;
     frameworkDrawCount = 0;
 }
@@ -438,10 +510,15 @@ export function applyFrameworkFrame(state) {
     const source = state instanceof Uint8Array
         ? new Float32Array(state.buffer, state.byteOffset, state.byteLength / Float32Array.BYTES_PER_ELEMENT)
         : state;
-    const liveLength = Math.min(source.length, 8 + Math.max(0, Math.floor(source[4] || source.length - 8)));
-    if (!(frameworkFrame instanceof Float32Array) || frameworkFrame.length !== liveLength)
-        frameworkFrame = new Float32Array(liveLength);
+    if (source.length < 8 || !Number.isFinite(source[4]) || source[4] < 0)
+        throw new Error("Invalid framework frame header");
+    const stride = source[5] === 1 ? 76 : 36;
+    const liveLength = 8 + Math.floor(Math.min(source.length - 8, source[4]) / stride) * stride;
+    const capacity = capacityFor(liveLength, frameworkFrame?.length ?? 0, 4096);
+    if (!frameworkFrame || frameworkFrame.length !== capacity)
+        frameworkFrame = new Float32Array(capacity);
     frameworkFrame.set(source.subarray(0, liveLength));
+    frameworkFrameLength = liveLength;
     frameworkFramePrepared = false;
 }
 
@@ -479,7 +556,72 @@ export function applyTextureUploads(uploads) {
         // an ArrayBufferView, not a string or a plain JavaScript array.
         const pixels = typeof upload.data === "string"
             ? Uint8Array.from(atob(upload.data), character => character.charCodeAt(0))
-            : new Uint8Array(upload.data);
+            : upload.data instanceof Uint8Array ? upload.data : new Uint8Array(upload.data);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, upload.x, y, upload.width, upload.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     }
+}
+
+// Buffer reservations only; this deliberately excludes textures and the WASM heap.
+export function rendererMemory() {
+    return {
+        frameBytes: frameworkFrame?.byteLength ?? 0,
+        vertexBytes: frameworkVertices.byteLength + (frameworkDraw?.memory().vertexBytes ?? 0),
+        gpuVertexBytes: frameworkBufferCapacity + (frameworkDraw?.memory().gpuVertexBytes ?? 0) + (frameworkDraw?.memory().pathBytes ?? 0),
+        liveFloats: frameworkFrameLength,
+        textures: frameworkTextures.size
+    };
+}
+
+export function setGameplayActive(active) {
+    gameplayActive = !!active;
+    inputBridge?.setActive(gameplayActive);
+    releaseAllKeys("play state changed");
+}
+
+export function focusPlayfield() {
+    resizeCanvas?.();
+    canvas?.focus();
+}
+
+export async function toggleFullscreen() {
+    const target = canvas?.closest?.(".play-section") ?? canvas;
+    try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await target?.requestFullscreen?.();
+        resizeCanvas?.();
+    } catch {
+        // Fullscreen is optional; keep the embedded player usable if denied.
+    }
+}
+
+export async function exitFullscreen() {
+    try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        resizeCanvas?.();
+    } catch {
+        // A browser may already have ended fullscreen during a focus change.
+    }
+}
+
+function reportHostFailure(message) {
+    if (hostFailureReported) return;
+    hostFailureReported = true;
+    inputBridge?.setActive(false);
+    const parent = canvas?.parentElement;
+    if (parent && document.createElement) {
+        const notice = document.createElement('div');
+        notice.className = 'pause-overlay host-failure';
+        notice.setAttribute('role', 'alert');
+        const text = document.createElement('p');text.textContent = message;
+        const reload = document.createElement('button');reload.textContent = 'Reload player';
+        reload.addEventListener('click', () => location.reload());
+        notice.append(text, reload);parent.append(notice);
+    }
+    if (dotnet) void dotnet.invokeMethodAsync('ReportHostFailure', message).catch(() => {});
+}
+
+// On-demand diagnostics for reproducing loading/clock stalls without a per-frame UI refresh.
+export async function playerDiagnostics() {
+    return {frame,pumpPending,drawFailures,hostFailureReported,gameplayActive,heldKeys:inputBridge?.heldKeys(),memory:rendererMemory(),
+        managed:dotnet ? await dotnet.invokeMethodAsync('GetPlayerDiagnostics') : null};
 }

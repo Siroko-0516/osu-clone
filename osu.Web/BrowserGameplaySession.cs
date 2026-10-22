@@ -3,6 +3,8 @@
 
 using osu.Framework.Allocation;
 using osu.Framework.Audio.Track;
+using osu.Framework.Timing;
+using osu.Game.Beatmaps.ControlPoints;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -20,7 +22,7 @@ namespace osu.Web;
 /// Owns one browser gameplay attempt and supplies the same core dependency
 /// boundary that the desktop Player normally provides.
 /// </summary>
-public sealed partial class BrowserGameplaySession : CompositeDrawable
+public sealed partial class BrowserGameplaySession : CompositeDrawable, IBeatSyncProvider
 {
     public IBeatmap Beatmap { get; }
     public DrawableRuleset DrawableRuleset { get; }
@@ -32,6 +34,12 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
 
     public double StartTime => DrawableRuleset.GameplayStartTime;
 
+    public bool IsClosed => IsDisposed;
+
+    ControlPointInfo IBeatSyncProvider.ControlPoints => Beatmap.ControlPointInfo;
+    IClock IBeatSyncProvider.Clock => Clock;
+    public ChannelAmplitudes CurrentAmplitudes => Track.CurrentAmplitudes;
+
     public bool IsReady => DrawableRuleset.IsLoaded && DrawableRuleset.Playfield.IsLoaded;
 
     public BrowserGameplaySession(IBeatmap beatmap, Ruleset ruleset, Track track, ISkin rulesetSkin)
@@ -40,6 +48,9 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
         ArgumentNullException.ThrowIfNull(ruleset);
         ArgumentNullException.ThrowIfNull(track);
         ArgumentNullException.ThrowIfNull(rulesetSkin);
+
+        if (beatmap.HitObjects.Count == 0)
+            throw new InvalidDataException("The selected difficulty contains no playable objects.");
 
         RelativeSizeAxes = Axes.Both;
         Beatmap = beatmap;
@@ -58,9 +69,10 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
             healthProcessor: HealthProcessor);
 
         DrawableRuleset = ruleset.CreateDrawableRulesetWith(beatmap);
-        // Browsers share gameplay, rendering and interop on the UI thread. If one frame
-        // stalls, following the audio clock directly avoids a multi-second 60 Hz catch-up burst.
-        DrawableRuleset.SetFrameStablePlayback(false);
+        // Preserve the original rulesets' fixed-step judgement/lifetime processing.
+        // FrameStabilityContainer already limits catch-up work to a 10 ms budget;
+        // skipping its intermediate steps can skip notes after a browser stall.
+        DrawableRuleset.SetFrameStablePlayback(true);
         Clock = new GameplayClockContainer(track, applyOffsets: false, requireDecoupling: true)
         {
             Child = new SkinProvidingContainer(rulesetSkin)
@@ -78,12 +90,16 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
         DrawableRuleset.NewResult += applyResult;
         DrawableRuleset.RevertResult += revertResult;
 
+        // Match Player: completion and health must update on the ruleset's clock,
+        // not the host clock (which continues during pauses and song changes).
+        DrawableRuleset.FrameStableComponents.Children = new Drawable[] { ScoreProcessor, HealthProcessor };
         InternalChild = Clock;
     }
 
     protected override IReadOnlyDependencyContainer CreateChildDependencies(IReadOnlyDependencyContainer parent)
     {
         var dependencies = new DependencyContainer(base.CreateChildDependencies(parent));
+        dependencies.CacheAs<IBeatSyncProvider>(this);
         dependencies.CacheAs(DrawableRuleset);
         dependencies.CacheAs(ScoreProcessor);
         dependencies.CacheAs(HealthProcessor);

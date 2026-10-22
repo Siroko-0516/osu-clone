@@ -150,6 +150,20 @@ static class Program
         try { OszArchiveReader.Read(unsafeOsz); throw new Exception("Expected unsafe archive path rejection."); }
         catch (InvalidDataException) { }
         Console.WriteLine("PASS .osz metadata parsing, resource namespacing and traversal rejection");
+        var scoreRecords = new MemoryRecords();
+        var scores = await GameCollectionStore<ScoreSnapshot>.CreateAsync(scoreRecords, "scores");
+        var score = new ScoreSnapshot("attempt-1", "map-1", 3, 123456, 0.9876, DateTimeOffset.UtcNow, "Local player");
+        scoreRecords.FailNext = true;
+        try { await scores.SaveAsync(score.Id, score); throw new Exception("Expected score storage failure."); }
+        catch (IOException) { }
+        Check(scores.Values.Count == 0 && scoreRecords.Items.Count == 0, "Failed score save changed recorded attempts.");
+        await scores.SaveAsync(score.Id, score);
+        var replay = score with { Id = "attempt-2", TotalScore = 654321 };
+        await scores.SaveAsync(replay.Id, replay);
+        var restoredScores = await GameCollectionStore<ScoreSnapshot>.CreateAsync(scoreRecords, "scores");
+        Check(restoredScores.Values.Count == 2 && restoredScores.Values.Contains(score) && restoredScores.Values.Contains(replay),
+            "Replay overwrote an attempt or score fields did not survive restart.");
+        Console.WriteLine("PASS completed scores survive restart, retries and independent replay attempts");
         await BeatmapLoadingChecks.Run().ConfigureAwait(false);
     }
 }

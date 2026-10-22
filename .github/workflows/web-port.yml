@@ -10,6 +10,8 @@ on:
       - 'osu.Game/**'
       - 'WEB_PORTING.md'
       - '.github/workflows/web-port.yml'
+  pull_request:
+    branches: [web-port]
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,12 +19,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: web-port-${{ github.event.pull_request.number || 'pages' }}
   cancel-in-progress: true
 
 jobs:
   wasm-host:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout osu
         uses: actions/checkout@v4
@@ -35,12 +38,14 @@ jobs:
         run: node --check osu.Web/wwwroot/js/browserHost.js
 
       - name: Verify browser metadata storage contracts
+        timeout-minutes: 4
         working-directory: osu.Web.Storage.Tests
         run: |
-          npm ci --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund --fetch-retries=2 --fetch-timeout=30000 --loglevel=verbose
           npm test
 
       - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Checkout browser framework fork
@@ -48,7 +53,7 @@ jobs:
         with:
           repository: Siroko-0516/osu-framework-clone
           # Keep the game and framework pair reproducible while both ports evolve.
-          ref: 3f061392b696eb44ce66b5cd9d3b3c1a8d233195
+          ref: d06d6d7c3d4fd8548cdec2012aff0459a5a2dfe6
           path: osu-framework-clone
 
       - uses: actions/setup-dotnet@v4
@@ -68,7 +73,28 @@ jobs:
           dotnet osu.Web.Settings.Tests/bin/Release/net8.0/osu.Web.Settings.Tests.dll
 
       - name: Publish WebAssembly host
+        env:
+          # PR tests serve plain assets; retain compressed assets for Pages releases.
+          CompressionEnabled: ${{ github.event_name != 'pull_request' }}
         run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true -p:WasmBuildNative=false
+
+      - name: Install headless browser
+        working-directory: osu.Web.Storage.Tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Play original rulesets in the browser
+        working-directory: osu.Web.Storage.Tests
+        timeout-minutes: 8
+        env:
+          OSU_WEB_ROOT: ../artifacts/web/wwwroot
+        run: npm run test:e2e
+
+      - name: Save browser test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-playthrough
+          path: osu.Web.Storage.Tests/browser-test-results
 
       - name: Configure GitHub Pages base path
         run: sed -i 's|<base href="/">|<base href="/osu-clone/">|' artifacts/web/wwwroot/index.html
@@ -79,11 +105,13 @@ jobs:
           path: artifacts/web/wwwroot
 
       - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: artifacts/web/wwwroot
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -2,6 +2,7 @@ import { unlockAudio } from './browserAudio.mjs';
 
 // Preserve input edges between animation frames, including taps shorter than one frame.
 export function attachBrowserInput(canvas) {
+    let active = true;
     const events = [];
     const keys = new Set();
     const buttons = new Set();
@@ -23,8 +24,8 @@ export function attachBrowserInput(canvas) {
         else events.push(next);
     };
     const setKey = (code, pressed) => {
+        if (!active || !code) return;
         unlockAudio();
-        if (!code) return;
         if (pressed ? !keys.has(code) : keys.has(code)) {
             if (pressed) keys.add(code); else keys.delete(code);
             events.push({ kind: 'key', code, pressed });
@@ -42,11 +43,13 @@ export function attachBrowserInput(canvas) {
         pointerId = null;
     };
     listen(canvas, 'pointermove', event => {
+        if (!active) return;
         if (pointerId !== null && pointerId !== event.pointerId) return;
         position(event);
         move();
     });
     listen(canvas, 'pointerdown', event => {
+        if (!active) return;
         unlockAudio();
         if (pointerId !== null && pointerId !== event.pointerId) return;
         event.preventDefault();
@@ -71,14 +74,16 @@ export function attachBrowserInput(canvas) {
     const isTextEntry = target => typeof target?.matches === 'function'
         && (target.matches('input, textarea, select') || target.isContentEditable);
     listen(window, 'keydown', event => {
-        if (isTextEntry(event.target)) return;
-        if (!event.code || event.isComposing) return;
+        if (!active || isTextEntry(event.target)) return;
+        if (!event.code || event.isComposing || event.code === 'Tab' || event.code === 'Escape') return;
+        if (event.metaKey || (event.ctrlKey && !event.code.startsWith('Control'))) return;
         event.preventDefault();
         if (event.repeat) return;
         setKey(event.code, true);
     });
     listen(window, 'keyup', event => setKey(event.code, false));
     listen(canvas, 'wheel', event => {
+        if (!active) return;
         event.preventDefault();
         const scale = event.deltaMode === 1 ? 1 : event.deltaMode === 2 ? 10 : 1 / 100;
         events.push({ kind: 'wheel', x: -event.deltaX * scale, y: -event.deltaY * scale });
@@ -87,6 +92,7 @@ export function attachBrowserInput(canvas) {
     listen(window, 'blur', reset);
     listen(document, 'visibilitychange', () => { if (document.hidden) reset(); });
     return {
+        setActive(value) { active = !!value; reset(); },
         drain: () => events.splice(0),
         hasHeldKeys: () => keys.size > 0,
         heldKeys: () => [...keys],

@@ -27,8 +27,12 @@ public sealed class BrowserInputHandler : InputHandler
     private readonly HashSet<Key> heldKeys = new();
     private readonly HashSet<MouseButton> heldButtons = new();
 
+    public long ReceivedEvents { get; private set; }
+    public string[] HeldKeys => heldKeys.Select(key => key.ToString()).ToArray();
+
     public void Receive(BrowserInputEvent input)
     {
+        ReceivedEvents++;
         if (!Enabled.Value || IsDisposed) return;
 
         switch (input.Kind)

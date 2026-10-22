@@ -44,7 +44,8 @@ sealed class MemoryRecords : IRecordStore
         return committed;
     }
 
-    public Task<StoredRecord> SaveAsync(string collection, string id, string payload, int schemaVersion, long expectedRevision) => throw new NotSupportedException();
+    public async Task<StoredRecord> SaveAsync(string collection, string id, string payload, int schemaVersion, long expectedRevision) =>
+        (await SaveBatchAsync(new[] { new RecordChange(collection, id, payload, schemaVersion, expectedRevision) }))[0];
 
     public Task<StoredRecord?> SetDeletePendingAsync(string collection, string id, bool value, long expectedRevision) => throw new NotSupportedException();
 }

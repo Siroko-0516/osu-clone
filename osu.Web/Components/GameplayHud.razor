@@ -1,0 +1,34 @@
+@namespace osu.Web.Components
+@implements IAsyncDisposable
+
+@if (Session is { IsClosed: false } session)
+{
+    <div class="gameplay-hud" aria-label="Gameplay score">
+        <span><small>SCORE</small><strong>@session.ScoreProcessor.TotalScore.Value.ToString("N0")</strong></span>
+        <span><small>ACCURACY</small><strong>@session.ScoreProcessor.Accuracy.Value.ToString("P2")</strong></span>
+        <span><small>COMBO</small><strong>@(session.ScoreProcessor.Combo.Value)×</strong></span>
+    </div>
+}
+
+@code {
+    [Parameter] public BrowserGameplaySession? Session { get; set; }
+    private readonly CancellationTokenSource cancellation = new();
+    private Task? refresh;
+    protected override void OnInitialized() => refresh = RefreshAsync();
+    private async Task RefreshAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(200));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellation.Token))
+                if (Session is { IsClosed: false } session && !session.Clock.IsPaused.Value) await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        cancellation.Cancel();
+        if (refresh is not null) await refresh;
+        cancellation.Dispose();
+    }
+}
