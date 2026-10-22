@@ -1,7 +1,7 @@
 @namespace osu.Web.Components
 @implements IAsyncDisposable
 
-@if (Session is { IsDisposed: false } session)
+@if (Session is { IsClosed: false } session)
 {
     <div class="gameplay-hud" aria-label="Gameplay score">
         <span><small>SCORE</small><strong>@session.ScoreProcessor.TotalScore.Value.ToString("N0")</strong></span>
@@ -21,7 +21,7 @@
         try
         {
             while (await timer.WaitForNextTickAsync(cancellation.Token))
-                if (Session is { IsDisposed: false }) await InvokeAsync(StateHasChanged);
+                if (Session is { IsClosed: false } session && !session.Clock.IsPaused.Value) await InvokeAsync(StateHasChanged);
         }
         catch (OperationCanceledException) { }
     }

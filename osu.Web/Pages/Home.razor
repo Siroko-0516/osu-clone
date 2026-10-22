@@ -131,7 +131,7 @@
                         <div class="difficulty-list">
                             @foreach (var difficulty in beatmapCatalog.GetBeatmaps(set.Id))
                             {
-                                <button @key="difficulty.Id" disabled="@(Busy || game is null || gameFailed)" @onclick="() => SelectDifficulty(difficulty)"><span>@difficulty.DifficultyName</span><small>@RulesetLabel(difficulty.RulesetId)</small></button>
+                                <div class="difficulty-actions" @key="difficulty.Id"><button disabled="@(Busy || game is null || gameFailed)" @onclick="() => SelectDifficulty(difficulty)"><span>@difficulty.DifficultyName</span><small>@RulesetLabel(difficulty.RulesetId)</small></button><button class="preview-button" disabled="@(Busy || game is null || gameFailed)" @onclick="() => PreviewDifficulty(difficulty)" aria-label="@($"Preview {difficulty.DifficultyName}")">♪</button></div>
                             }
                         </div></div></article>
                 }
@@ -139,6 +139,11 @@
                 <div class="pagination"><button disabled="@(songPage == 0)" @onclick="() => songPage--">Previous</button><span>Page @(songPage + 1)</span><button disabled="@(!HasMoreSongs)" @onclick="() => songPage++">Next</button></div>
             }
             <p class="selection-status" role="status">@selectionStatus</p>
+            @if (songPreview is not null && game?.GameplaySession is null)
+            {
+                <button @onclick="StopSongPreviewAsync" disabled="@Busy">Stop preview</button>
+                @if (songPreview.LoadError.Length > 0) { <p role="alert">@songPreview.LoadError</p> }
+            }
         </section>
         @if (savedScores.Count > 0)
         {
@@ -375,23 +380,23 @@
         }
     }
 
-    private async Task PreviewSong()
+    private async Task PreviewDifficulty(osu.Game.Database.Persistence.BeatmapSnapshot difficulty)
     {
-        if (loadingDifficulty || importingBeatmap || selectedDifficulty is null || selectedBeatmap is null
-            || persistentStorage is null || audioModule is null || fileStore is null || game is null) return;
+        if (Busy || gameFailed || persistentStorage is null || audioModule is null
+            || fileStore is null || game is null || beatmapLoader is null) return;
         loadingDifficulty = true;
         try
         {
             audioModule.InvokeVoid("unlockAudio");
             await StopSongPreviewAsync();
-            gameplayResult = null;
-            game?.AudioTestTrack?.Stop();
-            hydratedPaths.Add(selectedDifficulty.AudioPath);
+            hydratedPaths.Add(difficulty.BeatmapPath);
+            hydratedPaths.Add(difficulty.AudioPath);
             await fileStore.HydratePathsAsync(persistentStorage, hydratedPaths);
-            songPreview = game.CreateBrowserTrack(audioModule, persistentStorage.GetStream(selectedDifficulty.AudioPath), selectedDifficulty.AudioPath);
-            songPreview.Seek(Math.Max(0, selectedBeatmap.Metadata.PreviewTime));
+            var beatmap = beatmapLoader.Load(difficulty.Id);
+            songPreview = game.CreateBrowserTrack(audioModule, persistentStorage.GetStream(difficulty.AudioPath), difficulty.AudioPath);
+            songPreview.Seek(Math.Max(0, beatmap.Metadata.PreviewTime));
             songPreview.Start();
-            selectionStatus = "Previewing music. Press Play / restart for a new attempt.";
+            selectionStatus = $"Previewing {beatmap.Metadata.Title}. Select a difficulty to play.";
         }
         catch (Exception exception) { await StopSongPreviewAsync(); selectionStatus = "Preview failed: " + exception.Message; }
         finally { ReleaseHydratedFiles(); loadingDifficulty = false; }

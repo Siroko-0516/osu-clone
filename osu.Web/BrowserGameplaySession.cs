@@ -32,6 +32,8 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
 
     public double StartTime => DrawableRuleset.GameplayStartTime;
 
+    public bool IsClosed => IsDisposed;
+
     public bool IsReady => DrawableRuleset.IsLoaded && DrawableRuleset.Playfield.IsLoaded;
 
     public BrowserGameplaySession(IBeatmap beatmap, Ruleset ruleset, Track track, ISkin rulesetSkin)
