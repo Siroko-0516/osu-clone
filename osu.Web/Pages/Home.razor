@@ -818,7 +818,6 @@
         rulesetTime = game?.GameplaySession?.DrawableRuleset.FrameStableClock.CurrentTime,
         complete = game?.GameplaySession?.ScoreProcessor.HasCompleted.Value,
         judged = game?.GameplaySession?.ScoreProcessor.JudgedHits,
-        expected = game?.GameplaySession?.ScoreProcessor.MaxHits,
         rewinding = game?.GameplaySession?.DrawableRuleset.FrameStableClock.IsRewinding,
         objects = game?.GameplaySession?.DrawableRuleset.Playfield.AllHitObjects.Take(12).Select(d => new
         {
