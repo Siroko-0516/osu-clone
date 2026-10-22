@@ -33,6 +33,7 @@ try {
     await page.goto(`http://127.0.0.1:${server.address().port}`, {waitUntil:'networkidle',timeout:120000});
     await page.getByText('Player ready', {exact:true}).waitFor({timeout:120000});
     await checkRendererPixels(page);
+    await checkLongMaps(browser, `http://127.0.0.1:${server.address().port}`);
     await page.screenshot({path:resolve(artifacts,'library.png'),fullPage:true});
     // Menu navigation must not be swallowed by the game input bridge.
     await page.getByRole('button',{name:'Settings',exact:true}).focus();
@@ -123,6 +124,29 @@ try {
         await page.locator('.library-intro').waitFor();
         console.log(`PASS 1500-object map load/play/pause/exit ${attempt+1} in ${Date.now()-started}ms`);
     }
+    await page.setViewportSize({width:390,height:844});
+    await page.screenshot({path:resolve(artifacts,'mobile-library.png'),fullPage:true});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), 'mobile layout must not overflow');
+    assert.deepEqual(errors,[]);
+    console.log('PASS persisted songs/scores, keyboard navigation and mobile layout');
+} catch (error) {
+    console.error('PAGE STATE:',await page.locator('body').innerText());
+    console.error('PAGE ERRORS:',errors);
+    await page.screenshot({path:resolve(artifacts,'failure.png'),fullPage:true});
+    throw error;
+} finally {
+    await browser.close();
+    await new Promise(resolve=>server.close(resolve));
+}
+
+async function checkLongMaps(browser, baseURL) {
+    const page=await browser.newPage({viewport:{width:1280,height:900}});
+    page.setDefaultTimeout(60000);
+    page.on('console',message=>{if(message.type()==='error')console.error('LONG BROWSER:',message.text())});
+    page.on('pageerror',error=>console.error('LONG PAGE ERROR:',error.message));
+    try {
+        await page.goto(baseURL,{waitUntil:'networkidle',timeout:120000});
+        await page.getByText('Player ready',{exact:true}).waitFor({timeout:120000});
     for(const [keys,count] of [[4,1310],[4,3024],[7,6699]]) {
         await page.locator('input[type=file]').setInputFiles(resolve(fixtures,`long-mania-${keys}-${count}.osz`));
         const card=page.locator('.song-card').filter({has:page.getByRole('heading',{name:`Long mania ${keys}K ${count}`,exact:true})});
@@ -142,17 +166,10 @@ try {
         await page.locator('.library-intro').waitFor();
         console.log('PASS LONG MANIA:',keys,count);
     }
-    await page.setViewportSize({width:390,height:844});
-    await page.screenshot({path:resolve(artifacts,'mobile-library.png'),fullPage:true});
-    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), 'mobile layout must not overflow');
-    assert.deepEqual(errors,[]);
-    console.log('PASS persisted songs/scores, keyboard navigation and mobile layout');
-} catch (error) {
-    console.error('PAGE STATE:',await page.locator('body').innerText());
-    console.error('PAGE ERRORS:',errors);
-    await page.screenshot({path:resolve(artifacts,'failure.png'),fullPage:true});
-    throw error;
-} finally {
-    await browser.close();
-    await new Promise(resolve=>server.close(resolve));
+
+    } catch(error) {
+        console.error('LONG MAP FAILURE:',await page.locator('body').innerText());
+        await page.screenshot({path:resolve(artifacts,'long-map-failure.png'),fullPage:true});
+        throw error;
+    } finally { await page.close(); }
 }
