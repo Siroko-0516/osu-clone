@@ -25,6 +25,7 @@ concurrency:
 jobs:
   wasm-host:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout osu
         uses: actions/checkout@v4
@@ -37,9 +38,10 @@ jobs:
         run: node --check osu.Web/wwwroot/js/browserHost.js
 
       - name: Verify browser metadata storage contracts
+        timeout-minutes: 4
         working-directory: osu.Web.Storage.Tests
         run: |
-          npm ci --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund --fetch-retries=2 --fetch-timeout=30000 --loglevel=verbose
           npm test
 
       - name: Configure GitHub Pages
