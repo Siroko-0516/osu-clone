@@ -85,3 +85,9 @@ This update does not complete the original-client port. Full renderer shader/mas
 - HUD refresh is isolated to its own component at 5 Hz and stops refreshing while paused. Song pages and temporary file hydration remain bounded.
 
 Validation: the Release managed WebAssembly build and all 24 JavaScript/managed checks pass locally, including failed score saves, retry, and independent replay persistence. The web CI now installs Chromium and runs generated, self-contained four-mode maps through import, pause/resume, completion, score save and reload, with screenshots uploaded even on failure. These playthrough checks deliberately miss the notes; they do not establish input timing accuracy or visual parity with the desktop client.
+
+### Browser verification result
+
+GitHub run [39709358675](https://github.com/Siroko-0516/osu-clone/actions/runs/39709358675) passed the Release publish and Chromium playthroughs on commit `ebf10a2`. All four original rulesets completed the generated maps, saved results and returned to the library. The test also verified Esc pause/resume, exiting fullscreen on completion, four songs and scores after reload, menu Tab navigation, no page errors, and a 390-pixel mobile layout without horizontal overflow. The test does not actively hit notes; catch may catch centred fruit without input.
+
+The first browser run exposed a missing `IBeatSyncProvider`; the gameplay session now supplies the actual map control points, gameplay clock and track amplitudes. These tests establish the browser-shell flow, not full renderer fidelity or measured input/audio latency. The separate upstream desktop CI remains blocked by existing NuGet vulnerability warnings treated as errors.
