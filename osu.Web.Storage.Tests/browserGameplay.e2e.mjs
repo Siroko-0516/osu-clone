@@ -36,12 +36,16 @@ try {
     await page.getByRole('button',{name:'Settings',exact:true}).focus();
     await page.keyboard.press('Tab');
     assert.notEqual(await page.evaluate(()=>document.activeElement.textContent),'Settings');
+    const failures=[];
     for (let mode=0;mode<4;mode++) {
+      try {
         await page.locator('input[type=file]').setInputFiles(resolve(fixtures,`mode-${mode}.osz`));
         await page.getByRole('heading',{name:`Browser smoke ${mode}`,exact:true}).waitFor();
         const card=page.locator('.song-card').filter({has:page.getByRole('heading',{name:`Browser smoke ${mode}`,exact:true})});
         await card.locator('.difficulty-list button').first().click();
-        await page.locator('.play-section').waitFor({state:'visible'});
+        await page.waitForFunction(() => !document.querySelector('.play-section').hidden
+            || /failed|Could not load/i.test(document.querySelector('.selection-status')?.textContent ?? ''));
+        assert.ok(await page.locator('.play-section').isVisible(), await page.locator('.selection-status').innerText());
         await page.locator('.gameplay-hud').waitFor();
         if (mode===0) {
             await page.keyboard.press('Escape');
@@ -58,7 +62,15 @@ try {
         await page.getByRole('button',{name:'Back to songs',exact:true}).click();
         await page.locator('.library-intro').waitFor();
         console.log(`PASS mode ${mode}: import, original ruleset, completion, score save, return`);
+      } catch (error) {
+        failures.push(`Mode ${mode}: ${error.message}`);
+        console.error(`MODE ${mode} FAILED:`, await page.locator('body').innerText());
+        await page.screenshot({path:resolve(artifacts,`failure-mode-${mode}.png`),fullPage:true});
+        await page.reload({waitUntil:'networkidle'});
+        await page.getByText('Player ready',{exact:true}).waitFor();
+      }
     }
+    assert.deepEqual(failures,[]);
     await page.reload({waitUntil:'networkidle'});
     await page.getByText('Player ready',{exact:true}).waitFor();
     assert.equal(await page.locator('.score-row').count(),4);
