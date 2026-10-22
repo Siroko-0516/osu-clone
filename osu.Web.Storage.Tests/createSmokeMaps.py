@@ -44,3 +44,10 @@ SliderTickRate: 1
     with zipfile.ZipFile(root/f'mode-{mode}.osz','w',zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('smoke.osu',data)
         archive.writestr('sound.wav',sound.getvalue())
+# A longer object-heavy map exercises decoding/pooling without requiring a long playthrough.
+dense = data.replace('Mode: 3', 'Mode: 0').replace('Title: Browser smoke 3', 'Title: Dense loading regression')
+dense = dense.split('[HitObjects]')[0] + '[HitObjects]\n' + '\n'.join(
+    f'{64 + i % 7 * 64},{96 + i % 3 * 96},{1000 + i * 100},1,0,0:0:0:0:' for i in range(1500))
+with zipfile.ZipFile(root/'dense.osz','w',zipfile.ZIP_DEFLATED) as archive:
+    archive.writestr('dense.osu',dense)
+    archive.writestr('sound.wav',sound.getvalue())

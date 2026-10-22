@@ -349,6 +349,9 @@
                 new[] { difficulty.BeatmapPath, difficulty.AudioPath });
             fileStatus = $"{loadedFiles} files loaded for {set.Title}";
 
+            selectionStatus = "Decoding difficulty…";
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(1);
             var loaded = beatmapLoader.Load(difficulty.Id);
             string mode = difficulty.RulesetId switch { 0 => "osu", 1 => "taiko", 2 => "catch", 3 => "mania", _ => throw new InvalidDataException("Unsupported mode.") };
             if (mode == "mania") maniaKeys = (int)loaded.Difficulty.CircleSize;
@@ -360,7 +363,8 @@
             gameplayPaused = false;
             focusRequested = true;
             await InvokeAsync(StateHasChanged);
-            await game.LoadBeatmapAsync(loaded, CurrentRuleset, nextTrack);
+            try { await game.LoadBeatmapAsync(loaded, CurrentRuleset, nextTrack); }
+            catch { nextTrack.Dispose(); throw; }
             songPreview = nextTrack;
             selectedDifficulty = difficulty;
             selectedBeatmap = loaded;
@@ -573,7 +577,7 @@
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=15-player-flow");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=16-render-recovery");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
@@ -781,6 +785,15 @@
     }
 
     [JSInvokable]
+    public Task ReportHostFailure(string message)
+    {
+        gameFailed = true;
+        gameStatus = message;
+        songPreview?.Stop();
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
     public Task ReportRenderer(string renderer)
     {
         rendererStatus = renderer;
@@ -837,8 +850,8 @@
 
                     // Decide before creating the packed frame array. On mobile, allocating
                     // a large byte[] only to skip its transfer still fragments the WASM heap.
-                    int visualTransferDivisor = lastFrameFloatCount > 120000 ? 3
-                                                : lastFrameFloatCount > 60000 ? 2
+                    int visualTransferDivisor = lastFrameFloatCount > 253333 ? 3
+                                                : lastFrameFloatCount > 126666 ? 2
                                                 : 1;
                     if (frame % visualTransferDivisor == 0)
                     {

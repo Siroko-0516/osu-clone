@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { checkRendererPixels } from './rendererPixels.mjs';
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -31,6 +32,7 @@ page.on('console',message=>{if(message.type()==='error') console.error('BROWSER:
 try {
     await page.goto(`http://127.0.0.1:${server.address().port}`, {waitUntil:'networkidle',timeout:120000});
     await page.getByText('Player ready', {exact:true}).waitFor({timeout:120000});
+    await checkRendererPixels(page);
     await page.screenshot({path:resolve(artifacts,'library.png'),fullPage:true});
     // Menu navigation must not be swallowed by the game input bridge.
     await page.getByRole('button',{name:'Settings',exact:true}).focus();
@@ -78,6 +80,21 @@ try {
     await page.getByText('Player ready',{exact:true}).waitFor();
     assert.equal(await page.locator('.score-row').count(),4);
     assert.equal(await page.locator('.song-card').count(),4);
+    await page.locator('input[type=file]').setInputFiles(resolve(fixtures,'dense.osz'));
+    const dense=page.locator('.song-card').filter({has:page.getByRole('heading',{name:'Dense loading regression',exact:true})});
+    await dense.waitFor();
+    for(let attempt=0;attempt<2;attempt++) {
+        const started=Date.now();
+        await dense.locator('.difficulty-list button').first().click();
+        await page.locator('.gameplay-hud').waitFor({timeout:30000});
+        await page.waitForTimeout(2500);
+        await page.keyboard.press('Escape');
+        await page.getByRole('heading',{name:'Paused',exact:true}).waitFor({timeout:10000});
+        assert.equal(await page.locator('.host-failure').count(),0);
+        await page.getByRole('button',{name:'Back to songs',exact:true}).click();
+        await page.locator('.library-intro').waitFor();
+        console.log(`PASS 1500-object map load/play/pause/exit ${attempt+1} in ${Date.now()-started}ms`);
+    }
     await page.setViewportSize({width:390,height:844});
     await page.screenshot({path:resolve(artifacts,'mobile-library.png'),fullPage:true});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), 'mobile layout must not overflow');

@@ -170,22 +170,26 @@ namespace osu.Web
             idleLayer.Show();
         });
 
-        private Task runOnUpdateThread(Action action)
+        private async Task runOnUpdateThread(Action action)
         {
             var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using var registration = timeout.Token.Register(() => completion.TrySetException(
+                new TimeoutException("The game frame did not process the map operation. Reload the player to recover.")));
             Schedule(() =>
             {
+                if (completion.Task.IsCompleted) return;
                 try
                 {
                     action();
-                    completion.SetResult();
+                    completion.TrySetResult();
                 }
                 catch (Exception exception)
                 {
-                    completion.SetException(exception);
+                    completion.TrySetException(exception);
                 }
             });
-            return completion.Task;
+            await completion.Task;
         }
 
         private static string formatException(Exception exception)

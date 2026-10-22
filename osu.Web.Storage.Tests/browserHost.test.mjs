@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../osu.Web/wwwroot/js/browserHost.js', import.meta.url), 'utf8');
-const importable = source.replace("'./browserInput.mjs'", JSON.stringify(new URL('../osu.Web/wwwroot/js/browserInput.mjs', import.meta.url).href));
+const importable = source.replace("'./browserDraw.mjs'", JSON.stringify(new URL('../osu.Web/wwwroot/js/browserDraw.mjs', import.meta.url).href)).replace("'./browserInput.mjs'", JSON.stringify(new URL('../osu.Web/wwwroot/js/browserInput.mjs', import.meta.url).href));
 const host = await import(`data:text/javascript;base64,${Buffer.from(importable).toString('base64')}`);
 
 test('only standard combines keyboard hold with pointer drag', () => {
@@ -131,5 +131,33 @@ test('frame buffers plateau, empty frames discard stale geometry, and shutdown r
         delete globalThis.document;
         delete globalThis.requestAnimationFrame;
         delete globalThis.cancelAnimationFrame;
+    }
+});
+
+test('render exceptions keep scheduling frames and report repeated failure once', async () => {
+    let render, scheduled=0, fail=false;
+    const reports=[];
+    const gl=new Proxy({}, {get:(_,name)=> {
+        if(name===name.toUpperCase())return name;
+        if(name==='getShaderParameter'||name==='getProgramParameter')return ()=>true;
+        if(name==='getAttribLocation')return ()=>0;
+        if(name==='getParameter')return ()=>'test';
+        if(name==='drawArrays')return ()=>{if(fail)throw new Error('injected draw failure');};
+        return ()=>({});
+    }});
+    globalThis.window=new EventTarget();globalThis.document=new EventTarget();
+    globalThis.requestAnimationFrame=fn=>{render=fn;return ++scheduled;};
+    globalThis.cancelAnimationFrame=()=>{};
+    const canvas=new EventTarget();canvas.getContext=()=>gl;
+    canvas.getBoundingClientRect=()=>({left:0,top:0,width:640,height:480});
+    try {
+        await host.startBrowserHost(canvas,{invokeMethodAsync:async (...args)=>{reports.push(args);}});
+        fail=true;
+        for(let i=0;i<4;i++){const before=scheduled;render(i);assert.equal(scheduled,before+1);await Promise.resolve();}
+        assert.equal(reports.filter(r=>r[0]==='ReportHostFailure').length,1);
+        assert.match(reports.find(r=>r[0]==='ReportHostFailure')[1],/injected draw failure/);
+    } finally {
+        host.stopBrowserHost();
+        for(const name of ['window','document','requestAnimationFrame','cancelAnimationFrame'])delete globalThis[name];
     }
 });

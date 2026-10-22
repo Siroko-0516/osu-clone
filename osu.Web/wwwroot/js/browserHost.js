@@ -1,3 +1,4 @@
+import { createFrameworkDraw } from './browserDraw.mjs';
 import { attachBrowserInput } from './browserInput.mjs';
 
 let inputBridge;
@@ -7,6 +8,7 @@ let gl;
 let dotnet;
 let program;
 let frameworkProgram;
+let frameworkDraw;
 let frameworkBuffer;
 let frameworkBufferCapacity = 0;
 let diagnosticBuffer;
@@ -39,6 +41,9 @@ let lastKeyboardState = "";
 let canvasScale = 1;
 let resizeCanvas;
 let gameplayActive = true;
+let pumpStarted = 0;
+let drawFailures = 0;
+let hostFailureReported = false;
 
 const rulesetKeys = {
     osu: new Set(["KeyZ", "KeyX"]),
@@ -215,6 +220,12 @@ function prepareFrameworkFrame(state) {
 }
 
 function drawFrameworkFrame(state) {
+    if (state[5] === 1) {
+        frameworkDraw ??= createFrameworkDraw(gl, frameworkTextures, fallbackTexture);
+        frameworkDraw.render(state, frameworkFrameLength, state[6] || canvas.width, state[7] || canvas.height, !frameworkFramePrepared);
+        frameworkFramePrepared = true;
+        return;
+    }
     const viewportWidth = state[6] > 0 ? state[6] : canvas.width;
     const viewportHeight = state[7] > 0 ? state[7] : canvas.height;
     if (!frameworkFramePrepared) prepareFrameworkFrame(state);
@@ -376,7 +387,7 @@ export async function startBrowserHost(target, dotnetReference) {
     listen(window, "resize", resize);
     listen(canvas, "webglcontextlost", event => {
         event.preventDefault();
-        dotnet.invokeMethodAsync("ReportRenderer", "WebGL2 context lost");
+        reportHostFailure("The graphics context was lost. Reload the player to restore rendering.");
     });
 
     resize();
@@ -388,6 +399,10 @@ export async function startBrowserHost(target, dotnetReference) {
     if (generation !== hostGeneration) return false;
     const render = time => {
         if (generation !== hostGeneration) return;
+        // Reserve the next turn before invoking either renderer or managed code.
+        // A thrown WebGL error must never permanently kill requestAnimationFrame.
+        animationFrame = requestAnimationFrame(render);
+        try {
         // The first framework frames may contain only the clear colour and viewport
         // while the scene graph is still loading. Keep the diagnostic surface visible
         // until drawable geometry is actually available instead of showing a black box.
@@ -409,14 +424,21 @@ export async function startBrowserHost(target, dotnetReference) {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
 
+        drawFailures = 0;
+        } catch (error) {
+            if (++drawFailures >= 3) reportHostFailure(`Rendering stopped: ${error.message ?? error}`);
+        }
+
         frame++;
-        if (!pumpPending) {
+        if (pumpPending && performance.now() - pumpStarted > 20000)
+            reportHostFailure("The game stopped responding while loading or updating a map. Reload the player and try the difficulty again.");
+        if (!pumpPending && !hostFailureReported) {
             pumpPending = true;
+            pumpStarted = performance.now();
             dotnet.invokeMethodAsync("PumpGameFrame", frame, inputBridge.drain(), canvas.width, canvas.height)
-                .catch(() => { /* The next frame can retry a transient interop failure. */ })
+                .catch(error => reportHostFailure(`Game update failed: ${error.message ?? error}`))
                 .finally(() => { if (generation === hostGeneration) pumpPending = false; });
         }
-        animationFrame = requestAnimationFrame(render);
     };
     animationFrame = requestAnimationFrame(render);
     return true;
@@ -430,9 +452,14 @@ export function stopBrowserHost() {
     for (const remove of listeners.splice(0)) remove();
     animationFrame = undefined;
     pumpPending = false;
+    drawFailures = 0;
+    hostFailureReported = false;
+    globalThis.document?.querySelector?.(".host-failure")?.remove();
     activePointerId = null;
     pointer.down = false;
     if (gl) {
+        frameworkDraw?.dispose();
+        frameworkDraw = undefined;
         for (const texture of frameworkTextures.values()) gl.deleteTexture(texture);
         if (fallbackTexture) gl.deleteTexture(fallbackTexture);
         if (frameworkBuffer) gl.deleteBuffer(frameworkBuffer);
@@ -485,7 +512,8 @@ export function applyFrameworkFrame(state) {
         : state;
     if (source.length < 8 || !Number.isFinite(source[4]) || source[4] < 0)
         throw new Error("Invalid framework frame header");
-    const liveLength = 8 + Math.floor(Math.min(source.length - 8, source[4]) / 36) * 36;
+    const stride = source[5] === 1 ? 76 : 36;
+    const liveLength = 8 + Math.floor(Math.min(source.length - 8, source[4]) / stride) * stride;
     const capacity = capacityFor(liveLength, frameworkFrame?.length ?? 0, 4096);
     if (!frameworkFrame || frameworkFrame.length !== capacity)
         frameworkFrame = new Float32Array(capacity);
@@ -537,8 +565,8 @@ export function applyTextureUploads(uploads) {
 export function rendererMemory() {
     return {
         frameBytes: frameworkFrame?.byteLength ?? 0,
-        vertexBytes: frameworkVertices.byteLength,
-        gpuVertexBytes: frameworkBufferCapacity,
+        vertexBytes: frameworkVertices.byteLength + (frameworkDraw?.memory().vertexBytes ?? 0),
+        gpuVertexBytes: frameworkBufferCapacity + (frameworkDraw?.memory().gpuVertexBytes ?? 0) + (frameworkDraw?.memory().pathBytes ?? 0),
         liveFloats: frameworkFrameLength,
         textures: frameworkTextures.size
     };
@@ -573,4 +601,21 @@ export async function exitFullscreen() {
     } catch {
         // A browser may already have ended fullscreen during a focus change.
     }
+}
+
+function reportHostFailure(message) {
+    if (hostFailureReported) return;
+    hostFailureReported = true;
+    inputBridge?.setActive(false);
+    const parent = canvas?.parentElement;
+    if (parent && document.createElement) {
+        const notice = document.createElement('div');
+        notice.className = 'pause-overlay host-failure';
+        notice.setAttribute('role', 'alert');
+        const text = document.createElement('p');text.textContent = message;
+        const reload = document.createElement('button');reload.textContent = 'Reload player';
+        reload.addEventListener('click', () => location.reload());
+        notice.append(text, reload);parent.append(notice);
+    }
+    if (dotnet) void dotnet.invokeMethodAsync('ReportHostFailure', message).catch(() => {});
 }
