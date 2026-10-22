@@ -45,7 +45,8 @@ try {
         await card.locator('.difficulty-list button').first().click();
         await page.waitForFunction(() => !document.querySelector('.play-section').hidden
             || /failed|Could not load/i.test(document.querySelector('.selection-status')?.textContent ?? ''));
-        assert.ok(await page.locator('.play-section').isVisible(), await page.locator('.selection-status').innerText());
+        if (!await page.locator('.play-section').isVisible())
+            throw new Error(await page.locator('.selection-status').innerText());
         await page.locator('.gameplay-hud').waitFor();
         if (mode===0) {
             await page.keyboard.press('Escape');
