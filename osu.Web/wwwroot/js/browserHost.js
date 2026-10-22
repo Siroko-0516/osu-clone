@@ -37,6 +37,8 @@ const listeners = [];
 let lastPointerReport = 0;
 let lastKeyboardState = "";
 let canvasScale = 1;
+let resizeCanvas;
+let gameplayActive = true;
 
 const rulesetKeys = {
     osu: new Set(["KeyZ", "KeyX"]),
@@ -217,6 +219,8 @@ function drawFrameworkFrame(state) {
     const viewportHeight = state[7] > 0 ? state[7] : canvas.height;
     if (!frameworkFramePrepared) prepareFrameworkFrame(state);
 
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(frameworkProgram);
     gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
     gl.enableVertexAttribArray(frameworkPosition);
@@ -276,7 +280,7 @@ export async function startBrowserHost(target, dotnetReference) {
         keys: gl.getUniformLocation(program, "u_keys")
     };
 
-    const resize = () => {
+    const resize = resizeCanvas = () => {
         const rect = canvas.getBoundingClientRect();
         const cssPixels = Math.max(1, rect.width * rect.height);
         const coarsePointer = globalThis.matchMedia?.("(pointer: coarse)")?.matches ?? false;
@@ -347,7 +351,7 @@ export async function startBrowserHost(target, dotnetReference) {
         const target = event.target;
         if (typeof target?.matches === "function"
             && (target.matches("input, textarea, select") || target.isContentEditable)) return;
-        if (!rulesetKeys[ruleset]?.has(event.code)) return;
+        if (!gameplayActive || !rulesetKeys[ruleset]?.has(event.code)) return;
         event.preventDefault();
         if (event.repeat || keys.has(event.code)) return;
         keys.add(event.code);
@@ -358,9 +362,16 @@ export async function startBrowserHost(target, dotnetReference) {
         event.preventDefault();
         reportKeyboardState(`${event.code} up`);
     }, { capture: true });
-    listen(window, "blur", () => releaseAllKeys());
+    const pause = toggle => {
+        if (dotnet) void dotnet.invokeMethodAsync("PauseFromBrowser", toggle).catch(() => {});
+    };
+    listen(window, "keydown", event => {
+        if (event.code !== "Escape" || event.repeat || event.target?.matches?.("input, textarea, select")) return;
+        pause(true);
+    });
+    listen(window, "blur", () => { releaseAllKeys(); pause(false); });
     listen(document, "visibilitychange", () => {
-        if (document.hidden) releaseAllKeys();
+        if (document.hidden) { releaseAllKeys(); pause(false); }
     });
     listen(window, "resize", resize);
     listen(canvas, "webglcontextlost", event => {
@@ -434,6 +445,8 @@ export function stopBrowserHost() {
     lastKeyboardState = "";
     lastPointerReport = 0;
     canvas = undefined;
+    resizeCanvas = undefined;
+    gameplayActive = false;
     dotnet = undefined;
     gl = undefined;
     program = undefined;
@@ -529,4 +542,26 @@ export function rendererMemory() {
         liveFloats: frameworkFrameLength,
         textures: frameworkTextures.size
     };
+}
+
+export function setGameplayActive(active) {
+    gameplayActive = !!active;
+    inputBridge?.setActive(gameplayActive);
+    releaseAllKeys("play state changed");
+}
+
+export function focusPlayfield() {
+    resizeCanvas?.();
+    canvas?.focus();
+}
+
+export async function toggleFullscreen() {
+    const target = canvas?.closest?.(".play-section") ?? canvas;
+    try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await target?.requestFullscreen?.();
+        resizeCanvas?.();
+    } catch {
+        // Fullscreen is optional; keep the embedded player usable if denied.
+    }
 }

@@ -13,57 +13,71 @@
 @inject NavigationManager Navigation
 @inject osu.Game.Database.Persistence.IRecordStore Records
 
-<PageTitle>osu! web port laboratory</PageTitle>
+<PageTitle>osu! · Browser player</PageTitle>
 
-<main class="port-shell">
-    <header>
-        <div class="ring" aria-hidden="true"><span>web</span></div>
-        <div>
-            <p class="phase">BROWSER PORT · RENDERER PHASE</p>
-            <h1>@(Original ? "osu! browser gameplay runtime." : "Framework renderer diagnostics.")</h1>
-            <p class="lede">@(Original ? "Realm-free browser services now load original ruleset playfields, controls and local songs." : "This view isolates the renderer and input bridge for diagnostics.")</p>
-            <button @onclick="SwitchRuntime">@(Original ? "Open framework diagnostics" : "Open browser gameplay runtime")</button>
-        </div>
+<main class="app-shell">
+    <header class="app-header">
+        <a class="brand" href="" aria-label="osu browser home"><span class="brand-disc">osu!</span><span>browser player<small>LOCAL MUSIC · FOUR RULESETS</small></span></a>
+        <nav class="header-actions" aria-label="Main navigation">
+            <button class="@(showSettings ? "" : "active")" @onclick="OpenLibrary" disabled="@Busy">Songs</button>
+            <button class="@(showSettings ? "active" : "")" @onclick="ToggleSettings" disabled="@Busy">Settings</button>
+            <button @onclick="SwitchRuntime">@(Diagnostics ? "Player" : "Diagnostics")</button>
+        </nav>
     </header>
 
-    <nav class="mode-picker" aria-label="Ruleset">
-        <button class="@(selectedMode == "osu" ? "active" : null)" disabled="@(loadingDifficulty || importingBeatmap)" @onclick='() => SelectMode("osu")'>osu!standard</button>
-        <button class="@(selectedMode == "mania" ? "active" : null)" disabled="@(loadingDifficulty || importingBeatmap)" @onclick='() => SelectMode("mania")'>osu!mania</button>
-        <button class="@(selectedMode == "taiko" ? "active" : null)" disabled="@(loadingDifficulty || importingBeatmap)" @onclick='() => SelectMode("taiko")'>osu!taiko</button>
-        <button class="@(selectedMode == "catch" ? "active" : null)" disabled="@(loadingDifficulty || importingBeatmap)" @onclick='() => SelectMode("catch")'>osu!catch</button>
-    </nav>
-
-    @if (selectedMode == "mania")
+    @if (gameFailed)
     {
-        <nav class="key-picker" aria-label="osu!mania key count">
-            @for (int keys = 1; keys <= 9; keys++)
-            {
-                int keyCount = keys;
-                <button class="@(maniaKeys == keyCount ? "active" : null)" disabled="@(loadingDifficulty || importingBeatmap)" @onclick="() => SelectManiaKeys(keyCount)">@keyCount K</button>
-            }
-        </nav>
+        <div class="notice error" role="alert"><strong>The player stopped.</strong> @gameStatus <button @onclick="ReloadRuntime">Reload player</button></div>
     }
 
-    @if (bindingRows.Count > 0)
+    @if (showSettings)
     {
-        <section class="binding-editor" aria-label="Current ruleset key bindings">
-            <div class="binding-title"><strong>@BindingEditorTitle key bindings</strong><button @onclick="ResetCurrentBindings">Restore defaults</button></div>
-            @foreach (var row in bindingRows)
+        <section class="settings-panel">
+            <p class="eyebrow">MAKE IT YOURS</p><h1>Controls & settings</h1>
+            <nav class="mode-picker" aria-label="Ruleset">
+                @foreach (var mode in new[] { "osu", "mania", "taiko", "catch" })
+                {
+                    <button class="@(selectedMode == mode ? "active" : null)" disabled="@Busy" @onclick="() => SelectMode(mode)">@mode</button>
+                }
+            </nav>
+            @if (selectedMode == "mania")
             {
-                <label @key="row"><span>@row.ActionName</span><select value="@((int)row.Key)" @onchange="args => ChangeBinding(row, args)" disabled="@bindingsSaving">
-                    @foreach (var key in selectableKeys)
+                <nav class="key-picker" aria-label="osu!mania key count">
+                    @for (int keys = 1; keys <= 9; keys++)
                     {
-                        <option value="@((int)key)">@key</option>
+                        int keyCount = keys;
+                        <button class="@(maniaKeys == keyCount ? "active" : null)" disabled="@Busy" @onclick="() => SelectManiaKeys(keyCount)">@keyCount K</button>
                     }
-                </select></label>
+                </nav>
             }
+            <section class="binding-editor" aria-label="Current ruleset key bindings">
+                <div class="binding-title"><strong>@BindingEditorTitle</strong><button @onclick="ResetCurrentBindings" disabled="@bindingsSaving">Restore defaults</button></div>
+                @foreach (var row in bindingRows)
+                {
+                    <label @key="row"><span>@row.ActionName</span><select value="@((int)row.Key)" @onchange="args => ChangeBinding(row, args)" disabled="@bindingsSaving">
+                        @foreach (var key in selectableKeys) { <option value="@((int)key)">@key</option> }
+                    </select></label>
+                }
+            </section>
+            <p class="muted" role="status">@keyBindingStatus</p>
+            <label class="setting-row"><input type="checkbox" disabled="@(osuConfig is null || settingsSaving)" checked="@(osuConfig?.Get<bool>(OsuRulesetSetting.SnakingInSliders) ?? true)" @onchange="SetSnaking" /> Snaking-in sliders <span>@settingsStatus</span></label>
         </section>
     }
 
-    <section class="canvas-panel">
-        <canvas @ref="canvas" tabindex="0" aria-label="osu browser game canvas"></canvas>
-        <div class="canvas-hint">@ModeInputHint</div>
-        @if (bindingRows.Count > 0)
+    <section class="play-section" hidden="@(!showPlayfield && !Diagnostics)">
+        <div class="play-heading"><div><p class="eyebrow">@BindingEditorTitle</p><h2>@(selectedBeatmap?.Metadata.Title ?? "Renderer diagnostics")</h2><span class="muted">@selectedDifficulty?.DifficultyName</span></div>
+            <div class="button-row"><button @onclick="TogglePause" disabled="@(game?.GameplaySession is null || gameplayResult is not null)">@(gameplayPaused ? "Resume" : "Pause") · Esc</button><button @onclick="Fullscreen">Fullscreen</button><button @onclick="ReturnToLibrary" disabled="@Busy">Exit</button></div>
+        </div>
+        <section class="canvas-panel">
+            <canvas @ref="canvas" tabindex="0" aria-label="osu browser game canvas"></canvas>
+            <osu.Web.Components.GameplayHud Session="@(game?.GameplaySession)" />
+            @if (gameplayPaused && gameplayResult is null)
+            {
+                <div class="pause-overlay"><p class="eyebrow">TAKE A BREATH</p><h2>Paused</h2><button class="primary" @onclick="TogglePause">Resume play</button><button @onclick="RestartGameplay" disabled="@Busy">Restart</button><button @onclick="ReturnToLibrary" disabled="@Busy">Back to songs</button></div>
+            }
+            <div class="canvas-hint">@ModeInputHint</div>
+        </section>
+        @if (game?.GameplaySession is not null && bindingRows.Count > 0)
         {
             <div class="touch-controls" aria-label="@BindingEditorTitle touch controls">
                 @foreach (var row in bindingRows)
@@ -71,11 +85,10 @@
                     string? code = ToBrowserCode(row.Key);
                     if (code is not null)
                     {
-                        <button @key="row" class="touch-key"
-                                @onpointerdown="() => SetVirtualKey(code, true)" @onpointerdown:preventDefault
-                                @onpointerup="() => SetVirtualKey(code, false)" @onpointerup:preventDefault
-                                @onpointercancel="() => SetVirtualKey(code, false)"
-                                @onpointerleave="() => SetVirtualKey(code, false)">
+                        <button @key="row" class="touch-key" disabled="@(gameplayPaused || gameplayResult is not null)"
+                            @onpointerdown="() => SetVirtualKey(code, true)" @onpointerdown:preventDefault
+                            @onpointerup="() => SetVirtualKey(code, false)" @onpointerup:preventDefault
+                            @onpointercancel="() => SetVirtualKey(code, false)" @onpointerleave="() => SetVirtualKey(code, false)">
                             <strong>@row.ActionName</strong><span>@row.Key</span>
                         </button>
                     }
@@ -87,102 +100,64 @@
     @if (gameplayResult is not null)
     {
         <section class="gameplay-result" aria-label="Play results" role="status">
-            <h2>Results · @gameplayResult.Difficulty</h2>
-            <p>Score <strong>@gameplayResult.Score.ToString("N0")</strong> · Accuracy <strong>@gameplayResult.Accuracy.ToString("P2")</strong> · Max combo <strong>@gameplayResult.Combo×</strong></p>
-            <button @onclick="RestartGameplay" disabled="@loadingDifficulty">Play again</button>
-            <button disabled="@loadingDifficulty" @onclick="ReturnToLibrary">Back to songs</button>
+            <p class="eyebrow">PLAY COMPLETE</p><h1>@gameplayResult.Difficulty</h1>
+            <div class="result-grid"><div><small>SCORE</small><strong>@gameplayResult.Score.ToString("N0")</strong></div><div><small>ACCURACY</small><strong>@gameplayResult.Accuracy.ToString("P2")</strong></div><div><small>MAX COMBO</small><strong>@(gameplayResult.Combo)×</strong></div></div>
+            <p class="muted">@scoreSaveStatus</p>
+            <div class="button-row"><button class="primary" @onclick="RestartGameplay" disabled="@Busy">Play again</button><button @onclick="ReturnToLibrary" disabled="@Busy">Back to songs</button></div>
         </section>
     }
 
-    <div>
-        <label class="file-import">Import beatmap (.osz) <InputFile OnChange="ImportBeatmap" accept=".osz,application/zip" disabled="@(importingBeatmap || loadingDifficulty)" /></label>
-        <span>@beatmapImportStatus</span>
-        @if (selectedBeatmap is not null)
-        {
-            <button @onclick="() => game?.PauseGameplay()">Pause gameplay</button>
-            <button disabled="@(gameplayResult is not null)" @onclick="() => game?.ResumeGameplay()">Resume gameplay</button>
-            <button @onclick="RestartGameplay" disabled="@loadingDifficulty">Play / restart</button>
-            <button disabled="@loadingDifficulty" @onclick="ReturnToLibrary">Return to songs</button>
-        }
-        <button @onclick="StartAudioTest">Play 5-second framework audio test</button>
-        <button @onclick="() => game?.AudioTestTrack?.Stop()">Pause audio test</button>
-        <button @onclick="() => game?.AudioTestTrack?.Seek(2000)">Seek audio test to 2 seconds</button>
-        <button @onclick="StartSampleTest">Play 200-ms framework sample</button>
-        <button @onclick="() => SetActionKeys(true)">Use A / X for action test</button>
-        <button @onclick="() => SetActionKeys(false)">Restore Z / X action defaults</button>
-    </div>
-
-    <section class="song-library" aria-label="Imported songs">
-        <h2>Your songs</h2>
-        <label>Search songs <input @bind="songSearch" @bind:event="oninput" placeholder="Title, artist or mapper" /></label>
-        @if (beatmapCatalog is null || beatmapLoader is null)
-        {
-            <p>Loading your library…</p>
-        }
-        else if (beatmapCatalog.Sets.Count == 0)
-        {
-            <p>Import an .osz file to add your first song. Songs stay in this browser.</p>
-        }
-        else
-        {
-            @foreach (var set in VisibleSets)
+    @if (!showPlayfield && !showSettings)
+    {
+        <section class="library-intro"><div><p class="eyebrow">YOUR MUSIC. YOUR RHYTHM.</p><h1>Choose your next beat.</h1><p class="muted">Import an .osz beatmap, pick a difficulty, and play.</p></div>
+            <label class="import-button">＋ Import beatmap<InputFile OnChange="ImportBeatmap" accept=".osz,application/zip" disabled="@(Busy || game is null || gameFailed)" /></label>
+        </section>
+        <p class="import-status" role="status">@beatmapImportStatus</p>
+        <section class="song-library" aria-label="Imported songs">
+            <div class="library-toolbar"><label class="search-field"><span>Search</span><input @bind="SongSearch" @bind:event="oninput" placeholder="Title, artist or mapper" /></label><span class="muted">@(beatmapCatalog?.Sets.Count ?? 0) songs · @savedScores.Count scores</span></div>
+            @if (beatmapCatalog is null || beatmapLoader is null)
             {
-                <article @key="set.Id">
-                    <h3>@set.Artist — @set.Title</h3>
-                    <p>Mapped by @set.Creator</p>
-                    <div class="difficulty-list">
-                        @foreach (var difficulty in beatmapCatalog.GetBeatmaps(set.Id))
-                        {
-                            <button @key="difficulty.Id" class="@(selectedDifficulty?.Id == difficulty.Id ? "active" : null)"
-                                    aria-pressed="@(selectedDifficulty?.Id == difficulty.Id)" disabled="@(importingBeatmap || loadingDifficulty)"
-                                    @onclick="() => SelectDifficulty(difficulty)">
-                                @difficulty.DifficultyName · @RulesetLabel(difficulty.RulesetId)
-                            </button>
-                        }
-                    </div>
-                </article>
+                <div class="empty-state"><h2>Getting the player ready…</h2><p>Loading your local library and controls.</p></div>
             }
-            @if (!VisibleSets.Any())
+            else if (beatmapCatalog.Sets.Count == 0)
             {
-                <p>No matching songs.</p>
+                <div class="empty-state"><span class="empty-disc">♪</span><h2>Your library starts here.</h2><p>Choose an .osz file above. Songs and completed scores stay in this browser.</p><span class="mode-tags">osu!standard · mania · taiko · catch</span></div>
             }
-        }
-        <p role="status">@selectionStatus</p>
-        @if (songPreview is not null && songPreview.LoadError.Length > 0)
+            else
+            {
+                @foreach (var set in VisibleSets)
+                {
+                    <article class="song-card" @key="set.Id"><div class="song-art" aria-hidden="true">♪</div><div class="song-content"><p class="eyebrow">@set.Artist</p><h2>@set.Title</h2><p class="muted">Mapped by @set.Creator</p>
+                        <div class="difficulty-list">
+                            @foreach (var difficulty in beatmapCatalog.GetBeatmaps(set.Id))
+                            {
+                                <button @key="difficulty.Id" disabled="@(Busy || game is null || gameFailed)" @onclick="() => SelectDifficulty(difficulty)"><span>@difficulty.DifficultyName</span><small>@RulesetLabel(difficulty.RulesetId)</small></button>
+                            }
+                        </div></div></article>
+                }
+                @if (!VisibleSets.Any()) { <div class="empty-state"><h2>No matching songs.</h2><p>Try a different title, artist or mapper.</p></div> }
+                <div class="pagination"><button disabled="@(songPage == 0)" @onclick="() => songPage--">Previous</button><span>Page @(songPage + 1)</span><button disabled="@(!HasMoreSongs)" @onclick="() => songPage++">Next</button></div>
+            }
+            <p class="selection-status" role="status">@selectionStatus</p>
+        </section>
+        @if (savedScores.Count > 0)
         {
-            <p role="alert">Could not preview audio: @songPreview.LoadError</p>
+            <section class="recent-scores"><p class="eyebrow">RECENT PLAYS</p><h2>Your local scores</h2>
+                @foreach (var score in savedScores.Take(5))
+                {
+                    <div class="score-row"><span>@ScoreTitle(score.BeatmapId)<small>@RulesetLabel(score.RulesetId) · @score.Date.ToLocalTime().ToString("g")</small></span><strong>@score.TotalScore.ToString("N0") <small>@score.Accuracy.ToString("P2")</small></strong></div>
+                }
+            </section>
         }
-        @if (selectedBeatmap is not null)
-        {
-            <div class="song-preview">
-                <button disabled="@loadingDifficulty" @onclick="PreviewSong">Preview music</button>
-                <button disabled="@loadingDifficulty" @onclick="StopSongPreviewAsync">Stop preview</button>
-                <span>@selectedBeatmap.HitObjects.Count objects · CS @selectedBeatmap.Difficulty.CircleSize · OD @selectedBeatmap.Difficulty.OverallDifficulty</span>
-            </div>
-        }
-    </section>
+    }
 
-    <dl>
-        <div><dt>Original ruleset settings test</dt><dd>
-            <label><input type="checkbox" disabled="@(osuConfig is null || settingsSaving)" checked="@(osuConfig?.Get<bool>(OsuRulesetSetting.SnakingInSliders) ?? true)" @onchange="SetSnaking" /> Snaking-in sliders</label>
-            <span>@settingsStatus</span>
-        </dd></div>
-        <div><dt>Original game</dt><dd>@(Original ? "Startup requested — see runtime status; gameplay unverified" : "Not started — native services still require porting")</dd></div>
-        <div><dt>Diagnostic runtime</dt><dd>@gameStatus</dd></div>
-        <div><dt>GPU renderer</dt><dd>@rendererStatus</dd></div>
-        <div><dt>Diagnostic frames</dt><dd>@gameFrameCount</dd></div>
-        <div><dt>Input bridge</dt><dd>@inputStatus</dd></div>
-        <div><dt>Framework input events</dt><dd>@(game?.ProcessedInputEvents ?? 0)</dd></div>
-        <div><dt>Original ruleset action test</dt><dd>@(game?.LastAction ?? "none") · @(game?.ActionPressCount ?? 0) pressed / @(game?.ActionReleaseCount ?? 0) released · @keyBindingStatus</dd></div>
-        <div><dt>Browser file storage</dt><dd>@fileStatus</dd></div>
-        <div><dt>Browser beatmap catalogue</dt><dd>@beatmapCatalogStatus</dd></div>
-        <div><dt>Framework audio position</dt><dd>@(game?.AudioTestTrack?.CurrentTime.ToString("0") ?? "0") ms</dd></div>
-        <div><dt>Framework sample</dt><dd>@(game?.AudioTestSample?.Length.ToString("0") ?? "0") ms · @(game?.SamplePlayCount ?? 0) plays</dd></div>
-        <div><dt>standard</dt><dd>@typeof(OsuRuleset).Assembly.GetName().Name</dd></div>
-        <div><dt>mania</dt><dd>@typeof(ManiaRuleset).Assembly.GetName().Name</dd></div>
-        <div><dt>taiko</dt><dd>@typeof(TaikoRuleset).Assembly.GetName().Name</dd></div>
-        <div><dt>catch</dt><dd>@typeof(CatchRuleset).Assembly.GetName().Name</dd></div>
-    </dl>
+    @if (Diagnostics)
+    {
+        <section class="diagnostics"><h2>Runtime diagnostics</h2><div class="button-row"><button @onclick="StartAudioTest">Play audio test</button><button @onclick="StartSampleTest">Play sample test</button></div><dl>
+            <div><dt>Runtime</dt><dd>@gameStatus</dd></div><div><dt>Renderer</dt><dd>@rendererStatus</dd></div><div><dt>Frames</dt><dd>@gameFrameCount</dd></div><div><dt>Input</dt><dd>@inputStatus</dd></div><div><dt>Storage</dt><dd>@fileStatus</dd></div><div><dt>Catalogue</dt><dd>@beatmapCatalogStatus</dd></div>
+        </dl></section>
+    }
+    <footer>Browser port · Original rulesets · Local play <span>@(game is null ? "Starting…" : "Player ready")</span></footer>
 </main>
 
 @code {
@@ -190,6 +165,65 @@
     public bool Diagnostics { get; set; }
 
     private bool Original => !Diagnostics;
+    private bool showSettings;
+    private bool showPlayfield;
+    private bool gameplayPaused;
+    private bool focusRequested;
+    private bool Busy => loadingDifficulty || importingBeatmap;
+    private string scoreSaveStatus = "";
+    private IReadOnlyList<osu.Game.Database.Persistence.ScoreSnapshot> savedScores = Array.Empty<osu.Game.Database.Persistence.ScoreSnapshot>();
+
+    private void ReloadRuntime() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    private async Task OpenLibrary() { await ReturnToLibrary(); showSettings = false; }
+    private async Task ToggleSettings() { await ReturnToLibrary(); showSettings = !showSettings; }
+    private async Task Fullscreen()
+    {
+        if (module is not null) await module.InvokeVoidAsync("toggleFullscreen");
+    }
+    private async Task TogglePause()
+    {
+        if (game?.GameplaySession is null || gameplayResult is not null || Busy) return;
+        gameplayPaused = !gameplayPaused;
+        if (gameplayPaused)
+        {
+            songPreview?.Stop();
+            game.PauseGameplay();
+        }
+        else
+        {
+            audioModule?.InvokeVoid("unlockAudio");
+            game.ResumeGameplay();
+            focusRequested = true;
+        }
+        if (module is not null) await module.InvokeVoidAsync("setGameplayActive", !gameplayPaused);
+    }
+    [JSInvokable]
+    public async Task PauseFromBrowser(bool toggle)
+    {
+        if (game?.GameplaySession is null || gameplayResult is not null || Busy) return;
+        if (toggle || !gameplayPaused) await TogglePause();
+        await InvokeAsync(StateHasChanged);
+    }
+    private string ScoreTitle(string id)
+    {
+        var difficulty = beatmapCatalog?.Beatmaps.FirstOrDefault(item => item.Id == id);
+        var set = beatmapCatalog?.Sets.FirstOrDefault(item => item.Id == difficulty?.SetId);
+        return set is null ? "Imported difficulty" : $"{set.Title} · {difficulty?.DifficultyName}";
+    }
+    private async Task SaveCompletedScore(PlayResult result)
+    {
+        if (persistence is null || selectedDifficulty is null) return;
+        var score = new osu.Game.Database.Persistence.ScoreSnapshot(Guid.NewGuid().ToString("N"),
+            selectedDifficulty.Id, selectedDifficulty.RulesetId, result.Score, result.Accuracy,
+            DateTimeOffset.UtcNow, "Local player");
+        try
+        {
+            await persistence.Scores.SaveAsync(score.Id, score);
+            savedScores = persistence.Scores.Values.OrderByDescending(item => item.Date).ToArray();
+            scoreSaveStatus = "Saved to this browser.";
+        }
+        catch (Exception exception) { scoreSaveStatus = "Score could not be saved: " + exception.Message; }
+    }
 
     private void SwitchRuntime() => Navigation.NavigateTo(Original ? "?diagnostics=true" : "", forceLoad: true);
 
@@ -257,11 +291,18 @@
         selectedBeatmap = null;
         selectedDifficulty = null;
         gameplayResult = null;
+        showPlayfield = false;
+        gameplayPaused = false;
+        if (module is not null) await module.InvokeVoidAsync("setGameplayActive", Diagnostics);
         selectionStatus = "Select a difficulty to play.";
     }
     private string songSearch = "";
+    private int songPage;
+    private string SongSearch { get => songSearch; set { songSearch = value; songPage = 0; } }
+    private bool HasMoreSongs => FilteredSets.Skip((songPage + 1) * 20).Any();
+    private IEnumerable<osu.Game.Database.Persistence.BeatmapSetSnapshot> VisibleSets => FilteredSets.Skip(songPage * 20).Take(20);
     private string selectionStatus = "Select a difficulty to load it.";
-    private IEnumerable<osu.Game.Database.Persistence.BeatmapSetSnapshot> VisibleSets =>
+    private IEnumerable<osu.Game.Database.Persistence.BeatmapSetSnapshot> FilteredSets =>
         (beatmapCatalog?.Sets ?? Array.Empty<osu.Game.Database.Persistence.BeatmapSetSnapshot>())
         .Where(set => string.IsNullOrWhiteSpace(songSearch) || $"{set.Artist} {set.Title} {set.Creator}".Contains(songSearch.Trim(), StringComparison.OrdinalIgnoreCase));
 
@@ -308,13 +349,22 @@
             await SelectMode(mode);
 
             var nextTrack = game.CreateBrowserTrack(audioModule, persistentStorage.GetStream(difficulty.AudioPath), difficulty.AudioPath);
+            showSettings = false;
+            showPlayfield = true;
+            gameplayPaused = false;
+            focusRequested = true;
+            await InvokeAsync(StateHasChanged);
             await game.LoadBeatmapAsync(loaded, CurrentRuleset, nextTrack);
             songPreview = nextTrack;
             selectedDifficulty = difficulty;
             selectedBeatmap = loaded;
             selectionStatus = $"Starting {difficulty.DifficultyName}: {loaded.HitObjects.Count} objects using the original {RulesetLabel(difficulty.RulesetId)} playfield…";
         }
-        catch (Exception exception) { selectionStatus = "Could not load difficulty: " + exception.Message; }
+        catch (Exception exception)
+        {
+            showPlayfield = false;
+            selectionStatus = "Could not load difficulty: " + exception.Message;
+        }
         finally
         {
             // Decoder and WebAudioTrack have consumed their streams. Keep the durable
@@ -352,7 +402,7 @@
         WebAudioTrack? previousTrack = songPreview;
         songPreview = null;
         bool ownedBySession = previousTrack is not null && game?.GameplaySession?.Track == previousTrack;
-        if (game?.GameplaySession is not null)
+        if (game?.GameplaySession is not null && !gameFailed)
             await game.StopGameplayAsync();
         if (previousTrack is not null && !ownedBySession)
         {
@@ -485,7 +535,15 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
+        {
+            if (focusRequested && module is not null)
+            {
+                focusRequested = false;
+                await module.InvokeVoidAsync("focusPlayfield");
+                await module.InvokeVoidAsync("setGameplayActive", true);
+            }
             return;
+        }
 
         try
         {
@@ -493,6 +551,7 @@
             keyBindingStore = await BrowserKeyBindingStore.CreateAsync(Records);
             persistence = await osu.Game.Database.Persistence.GamePersistence.CreateAsync(Records, settingsStore);
             beatmapCatalog = persistence.Beatmaps;
+            savedScores = persistence.Scores.Values.OrderByDescending(item => item.Date).ToArray();
             beatmapCatalogStatus = $"{beatmapCatalog.Sets.Count} sets / {beatmapCatalog.Beatmaps.Count} difficulties restored";
             keyBindingStatus = "Browser key bindings loaded";
             LoadBindingEditor();
@@ -508,7 +567,7 @@
             osu.Framework.Audio.Track.BrowserTrackProvider.CreateTrack = (stream, name) => new WebAudioTrack(audioModule, stream, name);
             samplesModule = (IJSInProcessObjectReference)await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserSamples.mjs");
             osu.Framework.Audio.Sample.BrowserSampleFactory.CreateFactory = (bytes, name, mixer) => new WebAudioSampleFactory(samplesModule, bytes, name, mixer);
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=14-memory-lifecycle");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/browserHost.js?v=15-player-flow");
             self = DotNetObjectReference.Create(this);
             bool rendererReady = await module.InvokeAsync<bool>("startBrowserHost", canvas, self);
             if (!rendererReady)
@@ -519,6 +578,7 @@
                 return;
             }
 
+            await module.InvokeVoidAsync("setGameplayActive", Diagnostics);
             gameStatus = "initialising BrowserGameHost";
             StateHasChanged();
             gameHost = new WebGameHost("osu-web");
@@ -792,7 +852,10 @@
                         score.TotalScore.Value, score.Accuracy.Value, score.HighestCombo.Value);
                     completed.GameplayState.HasPassed = true;
                     game.PauseGameplay();
+                    gameplayPaused = true;
+                    if (module is not null) await module.InvokeVoidAsync("setGameplayActive", false);
                     selectionStatus = "Play complete.";
+                    await SaveCompletedScore(gameplayResult);
                     await InvokeAsync(StateHasChanged);
                 }
 
@@ -810,13 +873,17 @@
             catch (OutOfMemoryException exception)
             {
                 consecutiveFrameFailures++;
-                GC.Collect();
-                gameStatus = "Recovering browser memory: " + exception.Message;
+                if (consecutiveFrameFailures == 1) GC.Collect();
+                gameFailed = consecutiveFrameFailures >= 3;
+                songPreview?.Stop();
+                gameStatus = "Browser memory exhausted. Reload the player or try a smaller beatmap. " + exception.Message;
             }
             catch (Exception exception)
             {
                 // Retry transient rendering and interop failures on the next frame.
                 consecutiveFrameFailures++;
+                gameFailed = consecutiveFrameFailures >= 3;
+                if (gameFailed) songPreview?.Stop();
                 gameStatus = $"Frame recovery attempt {consecutiveFrameFailures}: {FormatException(exception)}";
             }
         }

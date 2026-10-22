@@ -73,6 +73,24 @@ jobs:
       - name: Publish WebAssembly host
         run: dotnet publish osu.Web/osu.Web.csproj -c Release -o artifacts/web -p:OsuBrowserBuild=true -p:WasmBuildNative=false
 
+      - name: Install headless browser
+        working-directory: osu.Web.Storage.Tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Play original rulesets in the browser
+        working-directory: osu.Web.Storage.Tests
+        timeout-minutes: 8
+        env:
+          OSU_WEB_ROOT: ../artifacts/web/wwwroot
+        run: npm run test:e2e
+
+      - name: Save browser test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-playthrough
+          path: osu.Web.Storage.Tests/browser-test-results
+
       - name: Configure GitHub Pages base path
         run: sed -i 's|<base href="/">|<base href="/osu-clone/">|' artifacts/web/wwwroot/index.html
 

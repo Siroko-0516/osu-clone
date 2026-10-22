@@ -93,6 +93,8 @@ test('frame buffers plateau, empty frames discard stale geometry, and shutdown r
         initial.fill(0); // Mutating the interop source must not change the copied frame.
         render(0);
         assert.equal(calls.filter(c => c[0] === 'drawArrays').at(-1)[3], 6000);
+        assert.ok(calls.some(c => c[0] === 'enable' && c[1] === 'BLEND'));
+        assert.ok(calls.some(c => c[0] === 'blendFuncSeparate' && c[1] === 'SRC_ALPHA' && c[2] === 'ONE_MINUS_SRC_ALPHA'));
         const peak = host.rendererMemory();
         const uploads = calls.filter(c => c[0] === 'bufferData').length;
         for (let i = 0; i < 100; i++) {

@@ -2,6 +2,12 @@
   "name": "osu-web-storage-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test recordStore.test.mjs browserHost.test.mjs browserFiles.test.mjs browserInput.test.mjs browserAudio.test.mjs browserSamples.test.mjs" },
-  "devDependencies": { "fake-indexeddb": "6.2.5" }
+  "scripts": {
+    "test": "node --test recordStore.test.mjs browserHost.test.mjs browserFiles.test.mjs browserInput.test.mjs browserAudio.test.mjs browserSamples.test.mjs",
+    "test:e2e": "node browserGameplay.e2e.mjs"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.5",
+    "playwright": "1.51.1"
+  }
 }
