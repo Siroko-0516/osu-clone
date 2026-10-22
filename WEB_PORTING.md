@@ -61,3 +61,16 @@ The browser framework fork now recognises `OperatingSystem.IsBrowser()` as a ded
 
 The audio thread also skips native BASS CPU statistics in WebAssembly. That initial no-output stage has now been extended with the track and sample providers described above.
 
+
+## Memory and gameplay lifecycle update (2026-10-22)
+
+- Browser frame and vertex arrays now reuse geometric capacity and shrink after a substantially smaller scene. An explicit zero live-vertex count clears stale geometry even when the transport buffer retains capacity.
+- Host shutdown deletes textures, buffers, programs and linked shaders, releases CPU arrays, and invalidates callbacks from an old host generation.
+- Selected beatmap/audio copies in the WASM filesystem are deleted once their streams have been consumed; the IndexedDB originals remain available for replay and preview.
+- Score and health processors now update inside the original ruleset's frame-stable component container. The browser shell displays score, accuracy and maximum combo after completion.
+- Play/restart creates a fresh attempt. Preview uses a separate track, so preview seeking cannot alter gameplay judgements. Song/mode transitions detach the previous session.
+- The file-store tests are included in the npm test command again and use the current on-demand read API.
+
+Validation: 13 JavaScript tests pass, including 100 fluctuating frame transfers, peak-buffer reclamation, empty-frame handling, CPU/GPU teardown and stale callbacks. These are mocked WebGL tests, not an end-to-end browser memory benchmark. The local .NET SDK cannot start in the execution environment (`Process.GetStat`/`get_StartTimeCore`), so managed compilation and actual four-ruleset playthroughs remain required. PR builds run without publishing to GitHub Pages.
+
+This update does not complete the original-client port. Full renderer shader/mask/framebuffer support, the original menu/results screens, and audio-timing verification for all four rulesets remain open. The result panel added here belongs to the browser shell.

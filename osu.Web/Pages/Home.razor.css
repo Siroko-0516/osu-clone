@@ -16,3 +16,6 @@
 .touch-key span { margin-top: 3px; color: #c6bdcc; font-size: .78rem; }
 .touch-key:active { background: #c33d78; border-color: #ffb1d3; transform: scale(.96); }
 @media (pointer: fine) and (min-width: 900px) { .touch-controls { opacity: .72; } }
+
+.gameplay-result { width: min(92vw, 960px); padding: 20px; border: 1px solid #ff9dc9; border-radius: 14px; background: #302137; }
+.gameplay-result h2 { margin-top: 0; }

@@ -89,6 +89,9 @@ namespace osu.Web
 
         public void SetRuleset(string mode, int variant = 0) => Schedule(() =>
         {
+            GameplaySession = null;
+            inputLayer.Clear();
+            idleLayer.Show();
             inputLayer.Child = mode switch
             {
                 "mania" => createInputContainer<ManiaAction>(new ManiaRuleset(), variant, mode),

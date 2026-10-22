@@ -9,8 +9,8 @@ let program;
 let frameworkProgram;
 let frameworkBuffer;
 let frameworkBufferCapacity = 0;
-let frameworkIndexBuffer;
-let frameworkIndexCapacity = 0;
+let diagnosticBuffer;
+let hostGeneration = 0;
 let fallbackTexture;
 let frame = 0;
 let pumpPending = false;
@@ -19,6 +19,7 @@ let activePointerId = null;
 const keys = new Set();
 let ruleset = "osu";
 let frameworkFrame;
+let frameworkFrameLength = 0;
 let frameworkFramePrepared = false;
 let frameworkVertices = new Float32Array(0);
 const frameworkDrawStarts = [];
@@ -134,41 +135,47 @@ function shader(type, source) {
     const result = gl.createShader(type);
     gl.shaderSource(result, source);
     gl.compileShader(result);
-    if (!gl.getShaderParameter(result, gl.COMPILE_STATUS))
-        throw new Error(gl.getShaderInfoLog(result));
+    if (!gl.getShaderParameter(result, gl.COMPILE_STATUS)) {
+        const message = gl.getShaderInfoLog(result);
+        gl.deleteShader(result);
+        throw new Error(message);
+    }
     return result;
 }
 
-function createProgram() {
+function linkProgram(vertex, fragment) {
     const result = gl.createProgram();
-    gl.attachShader(result, shader(gl.VERTEX_SHADER, vertexSource));
-    gl.attachShader(result, shader(gl.FRAGMENT_SHADER, fragmentSource));
-    gl.linkProgram(result);
-    if (!gl.getProgramParameter(result, gl.LINK_STATUS))
-        throw new Error(gl.getProgramInfoLog(result));
-    return result;
+    const shaders = [];
+    try {
+        shaders.push(shader(gl.VERTEX_SHADER, vertex));
+        shaders.push(shader(gl.FRAGMENT_SHADER, fragment));
+        for (const compiled of shaders) gl.attachShader(result, compiled);
+        gl.linkProgram(result);
+        if (!gl.getProgramParameter(result, gl.LINK_STATUS))
+            throw new Error(gl.getProgramInfoLog(result));
+        return result;
+    } catch (error) {
+        gl.deleteProgram(result);
+        throw error;
+    } finally {
+        for (const compiled of shaders) gl.deleteShader(compiled);
+    }
 }
 
-function createFrameworkProgram() {
-    const result = gl.createProgram();
-    gl.attachShader(result, shader(gl.VERTEX_SHADER, frameworkVertexSource));
-    gl.attachShader(result, shader(gl.FRAGMENT_SHADER, frameworkFragmentSource));
-    gl.linkProgram(result);
-    if (!gl.getProgramParameter(result, gl.LINK_STATUS))
-        throw new Error(gl.getProgramInfoLog(result));
-    return result;
+// Grow geometrically and release peak allocations after a substantially smaller scene.
+function capacityFor(required, current, minimum) {
+    if (required <= current && (current <= minimum || required > current / 4)) return current;
+    return Math.max(minimum, 2 ** Math.ceil(Math.log2(Math.max(1, required))));
 }
 
 function prepareFrameworkFrame(state) {
-    const liveFloatCount = Math.min(state.length - 8, Math.max(0, Math.floor(state[4] || state.length - 8)));
+    const liveFloatCount = frameworkFrameLength - 8;
     const quadCount = Math.floor(liveFloatCount / 36);
     const frameEnd = 8 + quadCount * 36;
     const required = quadCount * 48;
-    if (frameworkVertices.length < required) {
-        let capacity = Math.max(48, frameworkVertices.length);
-        while (capacity < required) capacity *= 2;
+    const capacity = capacityFor(required, frameworkVertices.length, 4096);
+    if (frameworkVertices.length !== capacity)
         frameworkVertices = new Float32Array(capacity);
-    }
 
     let target = 0;
     frameworkDrawCount = 0;
@@ -190,10 +197,14 @@ function prepareFrameworkFrame(state) {
         frameworkDrawCounts[frameworkDrawCount - 1] += 6;
     }
 
+    frameworkDrawStarts.length = frameworkDrawCount;
+    frameworkDrawCounts.length = frameworkDrawCount;
+    frameworkDrawTextures.length = frameworkDrawCount;
     gl.bindBuffer(gl.ARRAY_BUFFER, frameworkBuffer);
     const byteLength = target * Float32Array.BYTES_PER_ELEMENT;
-    if (frameworkBufferCapacity < byteLength) {
-        frameworkBufferCapacity = Math.max(4096, 2 ** Math.ceil(Math.log2(byteLength)));
+    const bufferCapacity = capacityFor(byteLength, frameworkBufferCapacity, 16384);
+    if (frameworkBufferCapacity !== bufferCapacity) {
+        frameworkBufferCapacity = bufferCapacity;
         gl.bufferData(gl.ARRAY_BUFFER, frameworkBufferCapacity, gl.DYNAMIC_DRAW);
     }
     if (target > 0)
@@ -225,6 +236,8 @@ function drawFrameworkFrame(state) {
 }
 
 export async function startBrowserHost(target, dotnetReference) {
+    stopBrowserHost();
+    const generation = hostGeneration;
     canvas = target;
     dotnet = dotnetReference;
     gl = canvas.getContext("webgl2", { alpha: false, antialias: false, powerPreference: "high-performance", desynchronized: true });
@@ -234,10 +247,9 @@ export async function startBrowserHost(target, dotnetReference) {
         return false;
     }
 
-    program = createProgram();
-    frameworkProgram = createFrameworkProgram();
+    program = linkProgram(vertexSource, fragmentSource);
+    frameworkProgram = linkProgram(frameworkVertexSource, frameworkFragmentSource);
     frameworkBuffer = gl.createBuffer();
-    frameworkIndexBuffer = gl.createBuffer();
     frameworkPosition = gl.getAttribLocation(frameworkProgram, "a_position");
     frameworkColour = gl.getAttribLocation(frameworkProgram, "a_colour");
     frameworkTexCoord = gl.getAttribLocation(frameworkProgram, "a_tex_coord");
@@ -248,7 +260,7 @@ export async function startBrowserHost(target, dotnetReference) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
-    const buffer = gl.createBuffer();
+    const buffer = diagnosticBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
     const positionLocation = gl.getAttribLocation(program, "a_position");
@@ -362,11 +374,13 @@ export async function startBrowserHost(target, dotnetReference) {
     pointer.y = canvas.height / 2;
     await dotnet.invokeMethodAsync("ReportRenderer", `WebGL2 · ${gl.getParameter(gl.RENDERER)}`);
 
+    if (generation !== hostGeneration) return false;
     const render = time => {
+        if (generation !== hostGeneration) return;
         // The first framework frames may contain only the clear colour and viewport
         // while the scene graph is still loading. Keep the diagnostic surface visible
         // until drawable geometry is actually available instead of showing a black box.
-        if (frameworkFrame?.length > 8) {
+        if (frameworkFrameLength >= 8) {
             const [r, g, b, a] = frameworkFrame;
             gl.clearColor(r, g, b, a);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
@@ -388,7 +402,8 @@ export async function startBrowserHost(target, dotnetReference) {
         if (!pumpPending) {
             pumpPending = true;
             dotnet.invokeMethodAsync("PumpGameFrame", frame, inputBridge.drain(), canvas.width, canvas.height)
-                .finally(() => pumpPending = false);
+                .catch(() => { /* The next frame can retry a transient interop failure. */ })
+                .finally(() => { if (generation === hostGeneration) pumpPending = false; });
         }
         animationFrame = requestAnimationFrame(render);
     };
@@ -397,6 +412,7 @@ export async function startBrowserHost(target, dotnetReference) {
 }
 
 export function stopBrowserHost() {
+    hostGeneration++;
     inputBridge?.dispose();
     inputBridge = undefined;
     if (animationFrame) cancelAnimationFrame(animationFrame);
@@ -405,16 +421,32 @@ export function stopBrowserHost() {
     pumpPending = false;
     activePointerId = null;
     pointer.down = false;
+    if (gl) {
+        for (const texture of frameworkTextures.values()) gl.deleteTexture(texture);
+        if (fallbackTexture) gl.deleteTexture(fallbackTexture);
+        if (frameworkBuffer) gl.deleteBuffer(frameworkBuffer);
+        if (diagnosticBuffer) gl.deleteBuffer(diagnosticBuffer);
+        if (frameworkProgram) gl.deleteProgram(frameworkProgram);
+        if (program) gl.deleteProgram(program);
+    }
+    keys.clear();
+    frame = 0;
+    lastKeyboardState = "";
+    lastPointerReport = 0;
+    canvas = undefined;
     dotnet = undefined;
     gl = undefined;
+    program = undefined;
+    diagnosticBuffer = undefined;
     frameworkProgram = undefined;
     frameworkBuffer = undefined;
     frameworkBufferCapacity = 0;
-    frameworkIndexBuffer = undefined;
-    frameworkIndexCapacity = 0;
     fallbackTexture = undefined;
     frameworkTextures.clear();
     frameworkFrame = undefined;
+    frameworkFrameLength = 0;
+    frameworkVertices = new Float32Array(0);
+    frameworkDrawStarts.length = frameworkDrawCounts.length = frameworkDrawTextures.length = 0;
     frameworkFramePrepared = false;
     frameworkDrawCount = 0;
 }
@@ -438,10 +470,14 @@ export function applyFrameworkFrame(state) {
     const source = state instanceof Uint8Array
         ? new Float32Array(state.buffer, state.byteOffset, state.byteLength / Float32Array.BYTES_PER_ELEMENT)
         : state;
-    const liveLength = Math.min(source.length, 8 + Math.max(0, Math.floor(source[4] || source.length - 8)));
-    if (!(frameworkFrame instanceof Float32Array) || frameworkFrame.length !== liveLength)
-        frameworkFrame = new Float32Array(liveLength);
+    if (source.length < 8 || !Number.isFinite(source[4]) || source[4] < 0)
+        throw new Error("Invalid framework frame header");
+    const liveLength = 8 + Math.floor(Math.min(source.length - 8, source[4]) / 36) * 36;
+    const capacity = capacityFor(liveLength, frameworkFrame?.length ?? 0, 4096);
+    if (!frameworkFrame || frameworkFrame.length !== capacity)
+        frameworkFrame = new Float32Array(capacity);
     frameworkFrame.set(source.subarray(0, liveLength));
+    frameworkFrameLength = liveLength;
     frameworkFramePrepared = false;
 }
 
@@ -479,7 +515,18 @@ export function applyTextureUploads(uploads) {
         // an ArrayBufferView, not a string or a plain JavaScript array.
         const pixels = typeof upload.data === "string"
             ? Uint8Array.from(atob(upload.data), character => character.charCodeAt(0))
-            : new Uint8Array(upload.data);
+            : upload.data instanceof Uint8Array ? upload.data : new Uint8Array(upload.data);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, upload.x, y, upload.width, upload.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     }
+}
+
+// Buffer reservations only; this deliberately excludes textures and the WASM heap.
+export function rendererMemory() {
+    return {
+        frameBytes: frameworkFrame?.byteLength ?? 0,
+        vertexBytes: frameworkVertices.byteLength,
+        gpuVertexBytes: frameworkBufferCapacity,
+        liveFloats: frameworkFrameLength,
+        textures: frameworkTextures.size
+    };
 }

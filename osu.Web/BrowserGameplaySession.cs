@@ -41,6 +41,9 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
         ArgumentNullException.ThrowIfNull(track);
         ArgumentNullException.ThrowIfNull(rulesetSkin);
 
+        if (beatmap.HitObjects.Count == 0)
+            throw new InvalidDataException("The selected difficulty contains no playable objects.");
+
         RelativeSizeAxes = Axes.Both;
         Beatmap = beatmap;
         Track = track;
@@ -78,6 +81,9 @@ public sealed partial class BrowserGameplaySession : CompositeDrawable
         DrawableRuleset.NewResult += applyResult;
         DrawableRuleset.RevertResult += revertResult;
 
+        // Match Player: completion and health must update on the ruleset's clock,
+        // not the host clock (which continues during pauses and song changes).
+        DrawableRuleset.FrameStableComponents.Children = new Drawable[] { ScoreProcessor, HealthProcessor };
         InternalChild = Clock;
     }
 

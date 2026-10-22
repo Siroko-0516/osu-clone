@@ -10,6 +10,8 @@ on:
       - 'osu.Game/**'
       - 'WEB_PORTING.md'
       - '.github/workflows/web-port.yml'
+  pull_request:
+    branches: [web-port]
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: web-port-${{ github.event.pull_request.number || 'pages' }}
   cancel-in-progress: true
 
 jobs:
@@ -41,6 +43,7 @@ jobs:
           npm test
 
       - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Checkout browser framework fork
@@ -79,11 +82,13 @@ jobs:
           path: artifacts/web/wwwroot
 
       - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: artifacts/web/wwwroot
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
