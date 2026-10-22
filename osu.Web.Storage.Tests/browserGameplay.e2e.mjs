@@ -33,6 +33,7 @@ try {
     await page.goto(`http://127.0.0.1:${server.address().port}`, {waitUntil:'networkidle',timeout:120000});
     await page.getByText('Player ready', {exact:true}).waitFor({timeout:120000});
     await checkRendererPixels(page);
+    await checkLongMaps(browser, `http://127.0.0.1:${server.address().port}`);
     await page.screenshot({path:resolve(artifacts,'library.png'),fullPage:true});
     // Menu navigation must not be swallowed by the game input bridge.
     await page.getByRole('button',{name:'Settings',exact:true}).focus();
@@ -136,4 +137,39 @@ try {
 } finally {
     await browser.close();
     await new Promise(resolve=>server.close(resolve));
+}
+
+async function checkLongMaps(browser, baseURL) {
+    const page=await browser.newPage({viewport:{width:1280,height:900}});
+    page.setDefaultTimeout(60000);
+    page.on('console',message=>{if(message.type()==='error')console.error('LONG BROWSER:',message.text())});
+    page.on('pageerror',error=>console.error('LONG PAGE ERROR:',error.message));
+    try {
+        await page.goto(baseURL,{waitUntil:'networkidle',timeout:120000});
+        await page.getByText('Player ready',{exact:true}).waitFor({timeout:120000});
+    for(const [keys,count] of [[4,1310],[4,3024],[7,6699]]) {
+        await page.locator('input[type=file]').setInputFiles(resolve(fixtures,`long-mania-${keys}-${count}.osz`));
+        const card=page.locator('.song-card').filter({has:page.getByRole('heading',{name:`Long mania ${keys}K ${count}`,exact:true})});
+        await card.waitFor();
+        console.log('LOAD LONG MANIA:',keys,count);
+        await card.locator('.difficulty-list button').first().click();
+        await page.locator('.gameplay-hud').waitFor({timeout:30000});
+        await page.waitForTimeout(6000);
+        assert.equal(await page.locator('.host-failure').count(),0);
+        const state=await page.evaluate(async()=>(await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics());
+        console.log('LONG MANIA STATE:',JSON.stringify(state));
+        assert.equal(state.managed.gameFailed,false);
+        assert.ok(state.managed.time>1000,'map clock must advance');
+        await page.keyboard.press('Escape');
+        await page.getByRole('heading',{name:'Paused',exact:true}).waitFor();
+        await page.getByRole('button',{name:'Back to songs',exact:true}).click();
+        await page.locator('.library-intro').waitFor();
+        console.log('PASS LONG MANIA:',keys,count);
+    }
+
+    } catch(error) {
+        console.error('LONG MAP FAILURE:',await page.locator('body').innerText());
+        await page.screenshot({path:resolve(artifacts,'long-map-failure.png'),fullPage:true});
+        throw error;
+    } finally { await page.close(); }
 }
