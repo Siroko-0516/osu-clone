@@ -605,6 +605,15 @@
             gameStatus = "initialising BrowserGameHost";
             StateHasChanged();
             gameHost = new WebGameHost("osu-web");
+            gameHost.ExceptionThrown += exception =>
+            {
+                // Framework thread failures otherwise remain in an internal log
+                // while the browser keeps presenting the last captured frame.
+                gameFailed = true;
+                gameStatus = FormatException(exception);
+                songPreview?.Stop();
+                return true;
+            };
             persistentStorage = gameHost.GetStorage("/osu-data");
             fileStore = new BrowserFileStore(JS);
             int storedFiles = await fileStore.CountAsync();
@@ -801,6 +810,7 @@
     public object GetPlayerDiagnostics() => new
     {
         gameFrameCount, gameFailed, gameStatus, selectionStatus, consecutiveFrameFailures,
+        hostState = gameHost?.ExecutionState.ToString(),
         loadingDifficulty, gameplayPaused, audioNeedsGesture,
         ready = game?.GameplaySession?.IsReady,
         time = game?.GameplaySession?.Clock.CurrentTime,
