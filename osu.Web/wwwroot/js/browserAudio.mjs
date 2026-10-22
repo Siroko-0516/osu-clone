@@ -14,7 +14,7 @@ export function createTrack(bytes) {
     const pan = ctx.createStereoPanner();
     const source = ctx.createMediaElementSource(audio);
     source.connect(gain).connect(pan).connect(ctx.destination);
-    const entry = {audio, url, gain, pan, source, requested:false, starting:false, error:'', seekTo:null};
+    const entry = {audio, url, gain, pan, source, requested:false, starting:false, blocked:false, error:'', seekTo:null};
     audio.addEventListener('ended', () => { entry.requested = false; });
     audio.addEventListener('error', () => { entry.error = audio.error?.message || 'Audio decoding failed'; });
     audio.addEventListener('loadedmetadata', () => {
@@ -28,14 +28,18 @@ export function createTrack(bytes) {
 }
 
 async function start(entry) {
-    if (entry.starting || !entry.requested || !entry.audio.paused) return;
+    if (entry.blocked || entry.starting || !entry.requested || !entry.audio.paused) return;
     entry.starting = true;
     try {
-        await getContext().resume();
-        if (entry.requested) await entry.audio.play();
+        // Invoke both gated browser APIs in the original gesture turn. Awaiting
+        // resume() before play() can lose activation on mobile browsers.
+        const resume = getContext().resume();
+        const play = entry.requested ? entry.audio.play() : Promise.resolve();
+        await Promise.all([resume, play]);
     } catch (error) {
         // Autoplay denial is retried only after an actual user gesture.
-        if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') entry.error = error.message;
+        if (error.name === 'NotAllowedError') entry.blocked = true;
+        else if (error.name !== 'AbortError') entry.error = error.message;
     } finally {
         entry.starting = false;
     }
@@ -43,7 +47,10 @@ async function start(entry) {
 
 export function unlockAudio() {
     getContext().resume().catch(() => {});
-    for (const entry of tracks.values()) if (entry.requested && entry.audio.paused) void start(entry);
+    for (const entry of tracks.values()) {
+        entry.blocked = false;
+        if (entry.requested && entry.audio.paused) void start(entry);
+    }
 }
 
 export function playTrack(id) {
@@ -89,14 +96,15 @@ export function configureTrack(id, volume, balance, frequency, tempo, looping) {
 
 export function trackState(id) {
     const entry = tracks.get(id);
-    if (!entry) return {duration:0, position:0, loaded:false, running:false, ended:true, error:''};
+    if (!entry) return {duration:0, position:0, loaded:false, running:false, ended:true, error:'', blocked:false};
     return {
         duration: Number.isFinite(entry.audio.duration) ? entry.audio.duration * 1000 : 0,
         position: (entry.seekTo ?? entry.audio.currentTime) * 1000,
         loaded: entry.audio.readyState >= 2,
         running: !entry.audio.paused && !entry.audio.ended && context?.state === 'running',
         ended: entry.audio.ended,
-        error: entry.error
+        error: entry.error,
+        blocked: entry.blocked
     };
 }
 

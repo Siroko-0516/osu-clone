@@ -117,10 +117,7 @@ namespace osu.Game.Database.Persistence
                     if (!path.EndsWith(".osu", StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    using Stream input = entry.Open();
-                    using var output = new MemoryStream(entry.Length > int.MaxValue ? 0 : (int)entry.Length);
-                    await input.CopyToAsync(output).ConfigureAwait(false);
-                    parsed.Add(parseBeatmap(new OszFile(path, output.ToArray())));
+                    parsed.Add(parseBeatmap(new OszFile(path, await readEntryAsync(entry).ConfigureAwait(false))));
                 }
             }
 
@@ -145,10 +142,7 @@ namespace osu.Game.Database.Persistence
                         continue;
 
                     string path = normalisePath(entry.FullName);
-                    using Stream input = entry.Open();
-                    using var output = new MemoryStream(entry.Length > int.MaxValue ? 0 : (int)entry.Length);
-                    await input.CopyToAsync(output).ConfigureAwait(false);
-                    await storeFile(new OszFile($"{root}/{path}", output.ToArray())).ConfigureAwait(false);
+                    await storeFile(new OszFile($"{root}/{path}", await readEntryAsync(entry).ConfigureAwait(false))).ConfigureAwait(false);
                 }
             }
 
@@ -160,6 +154,24 @@ namespace osu.Game.Database.Persistence
                 return paths.SingleOrDefault(path => path.Equals(requested, StringComparison.OrdinalIgnoreCase))
                        ?? throw new InvalidDataException($"Difficulty '{map.Version}' references missing audio '{requested}'.");
             }
+        }
+
+        private static async Task<byte[]> readEntryAsync(ZipArchiveEntry entry)
+        {
+            // Allocate the retained payload once rather than duplicating a full
+            // MemoryStream with ToArray (particularly expensive for song audio).
+            var data = new byte[checked((int)entry.Length)];
+            using Stream input = entry.Open();
+            const int chunkSize = 64 * 1024;
+            for (int offset = 0; offset < data.Length; offset += chunkSize)
+            {
+                await input.ReadExactlyAsync(data.AsMemory(offset, Math.Min(chunkSize, data.Length - offset))).ConfigureAwait(false);
+                // Memory-backed deflate reads may complete synchronously. Give the
+                // browser an actual event-loop turn during large decompressions.
+                if (OperatingSystem.IsBrowser() && offset % (chunkSize * 4) == 0)
+                    await Task.Delay(1).ConfigureAwait(false);
+            }
+            return data;
         }
 
         private static ParsedBeatmap parseBeatmap(OszFile file)

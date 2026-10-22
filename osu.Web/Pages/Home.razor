@@ -71,7 +71,11 @@
         <section class="canvas-panel">
             <canvas @ref="canvas" tabindex="0" aria-label="osu browser game canvas"></canvas>
             <osu.Web.Components.GameplayHud Session="@(game?.GameplaySession)" />
-            @if (gameplayPaused && gameplayResult is null)
+            @if (audioNeedsGesture && gameplayResult is null)
+            {
+                <div class="pause-overlay"><h2>Tap to start audio</h2><p>Your browser needs a tap before playing this song.</p><button class="primary" @onclick="UnlockGameplayAudio">Start audio</button></div>
+            }
+            else if (gameplayPaused && gameplayResult is null)
             {
                 <div class="pause-overlay"><p class="eyebrow">TAKE A BREATH</p><h2>Paused</h2><button class="primary" @onclick="TogglePause">Resume play</button><button @onclick="RestartGameplay" disabled="@Busy">Restart</button><button @onclick="ReturnToLibrary" disabled="@Busy">Back to songs</button></div>
             }
@@ -177,6 +181,14 @@
     private bool Busy => loadingDifficulty || importingBeatmap;
     private string scoreSaveStatus = "";
     private IReadOnlyList<osu.Game.Database.Persistence.ScoreSnapshot> savedScores = Array.Empty<osu.Game.Database.Persistence.ScoreSnapshot>();
+
+    private bool audioNeedsGesture;
+    private void UnlockGameplayAudio()
+    {
+        audioModule?.InvokeVoid("unlockAudio");
+        audioNeedsGesture = false;
+        focusRequested = true;
+    }
 
     private void ReloadRuntime() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
     private async Task OpenLibrary() { await ReturnToLibrary(); showSettings = false; }
@@ -411,6 +423,7 @@
     {
         WebAudioTrack? previousTrack = songPreview;
         songPreview = null;
+        audioNeedsGesture = false;
         bool ownedBySession = previousTrack is not null && game?.GameplaySession?.Track == previousTrack;
         if (game?.GameplaySession is not null && !gameFailed)
             await game.StopGameplayAsync();
@@ -861,6 +874,20 @@
                     }
                 }
                 gameFrameCount++;
+                if (frame % 15 == 0 && songPreview is { } playingTrack)
+                {
+                    if (playingTrack.LoadError is { Length: > 0 } audioError)
+                    {
+                        await ReportHostFailure("The song audio could not be played: " + audioError);
+                        return;
+                    }
+                    bool needsGesture = playingTrack.RequiresGesture;
+                    if (audioNeedsGesture != needsGesture)
+                    {
+                        audioNeedsGesture = needsGesture;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
                 consecutiveFrameFailures = 0;
 
                 if (gameplayResult is null && game?.GameplaySession is { IsReady: true } completed

@@ -60,9 +60,24 @@ try {
         }
         if (mode===1) await page.getByRole('button',{name:'Fullscreen',exact:true}).click();
         await page.screenshot({path:resolve(artifacts,`mode-${mode}.png`)});
-        // Deliberately miss notes: completion must still reach results for all modes.
+        if(mode===3) {
+            // Exercise real keyboard edges through the original mania judgement path.
+            const until=Date.now()+5000;
+            while(Date.now()<until) {
+                for(const key of ['d','f','j','k'])await page.keyboard.down(key);
+                await page.waitForTimeout(25);
+                for(const key of ['d','f','j','k'])await page.keyboard.up(key);
+                await page.waitForTimeout(25);
+            }
+        }
+        // Completion must reach results both with misses and with keyboard input.
         await page.getByLabel('Play results',{exact:true}).waitFor({timeout:45000});
         await page.getByText('Saved to this browser.',{exact:true}).waitFor();
+        if(mode===3) {
+            const score=Number((await page.locator('.result-grid strong').first().innerText()).replaceAll(',',''));
+            assert.ok(score>0,'mania keyboard input must produce a scored judgement');
+            console.log(`PASS mania keyboard judgements: score ${score}`);
+        }
         assert.equal(await page.evaluate(()=>document.fullscreenElement !== null),false);
         await page.getByRole('button',{name:'Back to songs',exact:true}).click();
         await page.locator('.library-intro').waitFor();

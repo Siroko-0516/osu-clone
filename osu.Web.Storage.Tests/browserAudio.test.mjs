@@ -7,6 +7,7 @@ test('browser track clock, pause, seek-before-load, pitch modes, and disposal', 
     class FakeAudio extends EventTarget {
         constructor() { super(); this.readyState = 0; this.currentTime = 0; this.duration = NaN; this.paused = true; this.ended = false; this.abortNextPlay = false; media.push(this); }
         async play() {
+            if (this.denyPlay) throw new DOMException('tap required', 'NotAllowedError');
             if (this.abortNextPlay) {
                 this.abortNextPlay = false;
                 throw new DOMException('metadata seek interrupted playback', 'AbortError');
@@ -67,7 +68,7 @@ test('browser track clock, pause, seek-before-load, pitch modes, and disposal', 
         assert.doesNotThrow(() => audio.playTrack(id));
         assert.doesNotThrow(() => audio.configureTrack(id, 1, 0, 1, 1, false));
         assert.equal(audio.seekTrack(id, 0), false);
-        assert.deepEqual(audio.trackState(id), {duration:0, position:0, loaded:false, running:false, ended:true, error:''});
+        assert.deepEqual(audio.trackState(id), {duration:0, position:0, loaded:false, running:false, ended:true, error:'', blocked:false});
 
         const replacementId = audio.createTrack(new Uint8Array([4, 5, 6]));
         media[1].readyState = 4; media[1].duration = 20;
@@ -86,6 +87,21 @@ test('browser track clock, pause, seek-before-load, pitch modes, and disposal', 
         await Promise.resolve(); await Promise.resolve();
         assert.equal(audio.trackState(interruptedId).running, true);
         audio.disposeTrack(interruptedId);
+
+        const blockedId = audio.createTrack(new Uint8Array([1]));
+        media[3].readyState=4; media[3].duration=20; media[3].denyPlay=true;
+        audio.playTrack(blockedId);
+        await Promise.resolve(); await Promise.resolve();
+        assert.equal(audio.trackState(blockedId).blocked,true);
+        media[3].denyPlay=false;
+        audio.configureTrack(blockedId,1,0,1,1,false);
+        await Promise.resolve(); await Promise.resolve();
+        assert.equal(audio.trackState(blockedId).running,false,'denied autoplay waits for a user gesture');
+        audio.unlockAudio();
+        await Promise.resolve(); await Promise.resolve();
+        assert.equal(audio.trackState(blockedId).running,true);
+        assert.equal(audio.trackState(blockedId).blocked,false);
+        audio.disposeTrack(blockedId);
     } finally {
         audio.disposeAudio();
         delete globalThis.Audio; delete globalThis.AudioContext;

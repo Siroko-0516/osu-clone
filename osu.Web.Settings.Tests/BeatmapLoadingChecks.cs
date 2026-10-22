@@ -25,12 +25,22 @@ internal static class BeatmapLoadingChecks
                     if (mode == 3) writer.Write("448,192,2000,128,0,3000:0:0:0:0:\n");
                 }
                 using var audio = zip.CreateEntry("Audio.wav").Open();
-                audio.Write(new byte[] { 1, 2, 3 });
+                audio.Write(Enumerable.Range(0, 150001).Select(i => (byte)(i % 251)).ToArray());
             }
             archive.Position = 0;
             var package = OszArchiveReader.Read(archive);
             if (!package.Beatmaps.Single().AudioPath.EndsWith("/Audio.wav", StringComparison.Ordinal))
                 throw new InvalidOperationException("Audio references were not resolved to the stored filename's casing.");
+            archive.Position = 0;
+            var streamed = new Dictionary<string, byte[]>();
+            var streamedPackage = await OszArchiveReader.ReadStreamingAsync(archive, file =>
+            {
+                streamed.Add(file.Path, file.Data);
+                return ValueTask.CompletedTask;
+            });
+            if (streamedPackage.Files.Count != 0 || streamed.Count != package.Files.Count
+                || package.Files.Any(file => !streamed[file.Path].SequenceEqual(file.Data)))
+                throw new InvalidOperationException("Chunked archive extraction altered payloads or retained a full archive copy.");
             foreach (var file in package.Files) files[file.Path] = file.Data;
             await catalogue.SaveSetAsync(package.Set, package.Beatmaps).ConfigureAwait(false);
         }
