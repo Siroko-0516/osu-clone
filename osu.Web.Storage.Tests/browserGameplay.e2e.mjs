@@ -87,12 +87,20 @@ try {
         console.log(`PASS mode ${mode}: import, original ruleset, completion, score save, return`);
       } catch (error) {
         failures.push(`Mode ${mode}: ${error.message}`);
-        console.log('FAILED STATE:',await page.evaluate(async()=>
-            (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics()));
+        console.log('FAILED STATE:',JSON.stringify(await page.evaluate(async()=>
+            (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics())));
         console.error(`MODE ${mode} FAILED:`, await page.locator('body').innerText());
         await page.screenshot({path:resolve(artifacts,`failure-mode-${mode}.png`),fullPage:true});
         await page.reload({waitUntil:'networkidle'});
         await page.getByText('Player ready',{exact:true}).waitFor();
+        if(mode===3) {
+            const passive=page.locator('.song-card').filter({has:page.getByRole('heading',{name:'Browser smoke 3',exact:true})});
+            await passive.locator('.difficulty-list button').first().click();
+            await page.locator('.gameplay-hud').waitFor();
+            await page.waitForTimeout(10000);
+            console.log('PASSIVE MANIA STATE:',JSON.stringify(await page.evaluate(async()=>
+                (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics())));
+        }
       }
     }
     assert.deepEqual(failures,[]);

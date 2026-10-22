@@ -817,6 +817,14 @@
         paused = game?.GameplaySession?.Clock.IsPaused.Value,
         rulesetTime = game?.GameplaySession?.DrawableRuleset.FrameStableClock.CurrentTime,
         complete = game?.GameplaySession?.ScoreProcessor.HasCompleted.Value,
+        judged = game?.GameplaySession?.ScoreProcessor.JudgedHits,
+        expected = game?.GameplaySession?.ScoreProcessor.MaxHits,
+        rewinding = game?.GameplaySession?.DrawableRuleset.FrameStableClock.IsRewinding,
+        objects = game?.GameplaySession?.DrawableRuleset.Playfield.AllHitObjects.Take(12).Select(d => new
+        {
+            type = d.GetType().Name, start = d.HitObject.StartTime, clock = d.Clock?.CurrentTime,
+            d.IsAlive, d.Judged, d.LifetimeStart, d.LifetimeEnd, result = d.Result?.Type.ToString(),
+        }).ToArray(),
         audioTime = songPreview?.CurrentTime,
         audioRunning = songPreview?.IsRunning,
         audioLoaded = songPreview?.IsLoaded,
