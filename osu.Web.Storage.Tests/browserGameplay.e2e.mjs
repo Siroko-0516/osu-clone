@@ -123,6 +123,25 @@ try {
         await page.locator('.library-intro').waitFor();
         console.log(`PASS 1500-object map load/play/pause/exit ${attempt+1} in ${Date.now()-started}ms`);
     }
+    for(const [keys,count] of [[4,1310],[4,3024],[7,6699]]) {
+        await page.locator('input[type=file]').setInputFiles(resolve(fixtures,`long-mania-${keys}-${count}.osz`));
+        const card=page.locator('.song-card').filter({has:page.getByRole('heading',{name:`Long mania ${keys}K ${count}`,exact:true})});
+        await card.waitFor();
+        console.log('LOAD LONG MANIA:',keys,count);
+        await card.locator('.difficulty-list button').first().click();
+        await page.locator('.gameplay-hud').waitFor({timeout:30000});
+        await page.waitForTimeout(6000);
+        assert.equal(await page.locator('.host-failure').count(),0);
+        const state=await page.evaluate(async()=>(await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics());
+        console.log('LONG MANIA STATE:',JSON.stringify(state));
+        assert.equal(state.managed.gameFailed,false);
+        assert.ok(state.managed.time>1000,'map clock must advance');
+        await page.keyboard.press('Escape');
+        await page.getByRole('heading',{name:'Paused',exact:true}).waitFor();
+        await page.getByRole('button',{name:'Back to songs',exact:true}).click();
+        await page.locator('.library-intro').waitFor();
+        console.log('PASS LONG MANIA:',keys,count);
+    }
     await page.setViewportSize({width:390,height:844});
     await page.screenshot({path:resolve(artifacts,'mobile-library.png'),fullPage:true});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), 'mobile layout must not overflow');

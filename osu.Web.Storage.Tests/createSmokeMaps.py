@@ -51,3 +51,19 @@ dense = dense.split('[HitObjects]')[0] + '[HitObjects]\n' + '\n'.join(
 with zipfile.ZipFile(root/'dense.osz','w',zipfile.ZIP_DEFLATED) as archive:
     archive.writestr('dense.osu',dense)
     archive.writestr('sound.wav',sound.getvalue())
+
+# Long mania maps exercise the production loading path, including simultaneous
+# notes, holds, legacy format and a full-length compressed media track.
+import subprocess
+subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','lavfi','-i','sine=frequency=220:duration=275','-filter:a','volume=0.02','-b:a','192k',str(root/'regression.mp3')],check=True)
+for keys,count in [(4,1310),(4,3024),(7,6699)]:
+    chart=data.split('[HitObjects]')[0].replace('v14','v13').replace('Title: Browser smoke 3',f'Title: Long mania {keys}K {count}').replace('CircleSize: 4',f'CircleSize: {keys}').replace('HPDrainRate: 3','HPDrainRate: 8').replace('OverallDifficulty: 5','OverallDifficulty: 8').replace('sound.wav','regression.mp3')
+    notes=[]
+    for i in range(count):
+        t=2133+(i//2)*260000//(count//2)
+        x=int((i%keys+0.5)*512/keys)
+        notes.append(f'{x},192,{t},128,0,{t+120}:0:0:0:0:' if i%7==0 else f'{x},192,{t},1,0,0:0:0:0:')
+    chart+='[HitObjects]\n'+'\n'.join(notes)
+    with zipfile.ZipFile(root/f'long-mania-{keys}-{count}.osz','w',zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('long.osu',chart)
+        archive.writestr('regression.mp3',(root/'regression.mp3').read_bytes())
