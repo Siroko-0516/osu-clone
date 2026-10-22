@@ -59,6 +59,7 @@ try {
             await page.getByRole('button',{name:'Resume play',exact:true}).click();
         }
         if (mode===1) await page.getByRole('button',{name:'Fullscreen',exact:true}).click();
+        if(mode===0)await page.waitForTimeout(2500); // Capture visible slider geometry, not the empty lead-in.
         await page.screenshot({path:resolve(artifacts,`mode-${mode}.png`)});
         if(mode===3) {
             // Exercise real keyboard edges through the original mania judgement path.
@@ -70,6 +71,8 @@ try {
                 await page.waitForTimeout(25);
             }
         }
+        console.log(`STATE mode ${mode}:`,await page.evaluate(async()=>
+            (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics()));
         // Completion must reach results both with misses and with keyboard input.
         await page.getByLabel('Play results',{exact:true}).waitFor({timeout:45000});
         await page.getByText('Saved to this browser.',{exact:true}).waitFor();
@@ -84,6 +87,8 @@ try {
         console.log(`PASS mode ${mode}: import, original ruleset, completion, score save, return`);
       } catch (error) {
         failures.push(`Mode ${mode}: ${error.message}`);
+        console.log('FAILED STATE:',await page.evaluate(async()=>
+            (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics()));
         console.error(`MODE ${mode} FAILED:`, await page.locator('body').innerText());
         await page.screenshot({path:resolve(artifacts,`failure-mode-${mode}.png`),fullPage:true});
         await page.reload({waitUntil:'networkidle'});

@@ -91,3 +91,15 @@ Validation: the Release managed WebAssembly build and all 24 JavaScript/managed 
 GitHub run [39709358675](https://github.com/Siroko-0516/osu-clone/actions/runs/39709358675) passed the Release publish and Chromium playthroughs on commit `ebf10a2`. All four original rulesets completed the generated maps, saved results and returned to the library. The test also verified Esc pause/resume, exiting fullscreen on completion, four songs and scores after reload, menu Tab navigation, no page errors, and a 390-pixel mobile layout without horizontal overflow. The test does not actively hit notes; catch may catch centred fruit without input.
 
 The first browser run exposed a missing `IBeatSyncProvider`; the gameplay session now supplies the actual map control points, gameplay clock and track amplitudes. These tests establish the browser-shell flow, not full renderer fidelity or measured input/audio latency. The separate upstream desktop CI remains blocked by existing NuGet vulnerability warnings treated as errors.
+
+## Rendering and loading recovery (2026-10-22)
+
+The paired framework revision `d06d6d7` sends version-one packets containing masks, scissors and blend state, plus browser path geometry. The WebGL host reuses vertex storage and one path distance framebuffer; it batches adjacent compatible quads and restricts path work to the path bounds. This adds rounded masks and overlap-safe slider paths without claiming arbitrary native shader/framebuffer parity.
+
+The animation loop reserves its next callback before drawing. Repeated drawing failures and stalled managed-frame promises produce a visible recovery message instead of silently leaving the last frame on screen. Queued map operations have a timeout and skip expired work. A synchronous CPU stall cannot be interrupted by this watchdog because WebAssembly still shares the browser main thread.
+
+Streaming archive extraction allocates each retained entry once and yields between chunks in the browser. This avoids the additional full-entry `MemoryStream.ToArray()` copy. Selected map/audio hydration and bounded render buffers remain in place.
+
+Blocked autoplay now waits for an explicit audio-start tap rather than repeatedly attempting playback without activation. Audio resume and media play are invoked in the original gesture turn. Decode failures are surfaced to the player.
+
+Local validation: Release WebAssembly build, 14 JavaScript checks and 11 managed checks pass. Checks include repeated rendering failures, blocked audio recovery, and byte-for-byte streaming extraction across chunk boundaries. The browser suite additionally checks actual mask/path pixels, four-mode playthroughs, mania keyboard scoring and repeated 1,500-object map loading. These fixtures do not establish stability on every user map, mobile performance, or measured audio latency.

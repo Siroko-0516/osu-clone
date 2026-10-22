@@ -619,3 +619,9 @@ function reportHostFailure(message) {
     }
     if (dotnet) void dotnet.invokeMethodAsync('ReportHostFailure', message).catch(() => {});
 }
+
+// On-demand diagnostics for reproducing loading/clock stalls without a per-frame UI refresh.
+export async function playerDiagnostics() {
+    return {frame,pumpPending,drawFailures,hostFailureReported,memory:rendererMemory(),
+        managed:dotnet ? await dotnet.invokeMethodAsync('GetPlayerDiagnostics') : null};
+}

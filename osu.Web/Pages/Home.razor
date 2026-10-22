@@ -798,6 +798,23 @@
     }
 
     [JSInvokable]
+    public object GetPlayerDiagnostics() => new
+    {
+        gameFrameCount, gameFailed, gameStatus, selectionStatus, consecutiveFrameFailures,
+        loadingDifficulty, gameplayPaused, audioNeedsGesture,
+        ready = game?.GameplaySession?.IsReady,
+        time = game?.GameplaySession?.Clock.CurrentTime,
+        paused = game?.GameplaySession?.Clock.IsPaused.Value,
+        rulesetTime = game?.GameplaySession?.DrawableRuleset.FrameStableClock.CurrentTime,
+        complete = game?.GameplaySession?.ScoreProcessor.HasCompleted.Value,
+        audioTime = songPreview?.CurrentTime,
+        audioRunning = songPreview?.IsRunning,
+        audioLoaded = songPreview?.IsLoaded,
+        audioError = songPreview?.LoadError,
+        gameplayError = game?.GameplayError,
+    };
+
+    [JSInvokable]
     public Task ReportHostFailure(string message)
     {
         gameFailed = true;
