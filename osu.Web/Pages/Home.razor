@@ -155,8 +155,8 @@
         @if (selectedBeatmap is not null)
         {
             <div class="song-preview">
-                <button @onclick="PreviewSong">Preview music</button>
-                <button @onclick="StopSongPreviewAsync">Stop preview</button>
+                <button disabled="@loadingDifficulty" @onclick="PreviewSong">Preview music</button>
+                <button disabled="@loadingDifficulty" @onclick="StopSongPreviewAsync">Stop preview</button>
                 <span>@selectedBeatmap.HitObjects.Count objects · CS @selectedBeatmap.Difficulty.CircleSize · OD @selectedBeatmap.Difficulty.OverallDifficulty</span>
             </div>
         }
@@ -307,7 +307,7 @@
             if (mode == "mania") maniaKeys = (int)loaded.Difficulty.CircleSize;
             await SelectMode(mode);
 
-            var nextTrack = new WebAudioTrack(audioModule, persistentStorage.GetStream(difficulty.AudioPath), difficulty.AudioPath);
+            var nextTrack = game.CreateBrowserTrack(audioModule, persistentStorage.GetStream(difficulty.AudioPath), difficulty.AudioPath);
             await game.LoadBeatmapAsync(loaded, CurrentRuleset, nextTrack);
             songPreview = nextTrack;
             selectedDifficulty = difficulty;
@@ -328,7 +328,7 @@
     private async Task PreviewSong()
     {
         if (loadingDifficulty || importingBeatmap || selectedDifficulty is null || selectedBeatmap is null
-            || persistentStorage is null || audioModule is null || fileStore is null) return;
+            || persistentStorage is null || audioModule is null || fileStore is null || game is null) return;
         loadingDifficulty = true;
         try
         {
@@ -338,7 +338,7 @@
             game?.AudioTestTrack?.Stop();
             hydratedPaths.Add(selectedDifficulty.AudioPath);
             await fileStore.HydratePathsAsync(persistentStorage, hydratedPaths);
-            songPreview = new WebAudioTrack(audioModule, persistentStorage.GetStream(selectedDifficulty.AudioPath), selectedDifficulty.AudioPath);
+            songPreview = game.CreateBrowserTrack(audioModule, persistentStorage.GetStream(selectedDifficulty.AudioPath), selectedDifficulty.AudioPath);
             songPreview.Seek(Math.Max(0, selectedBeatmap.Metadata.PreviewTime));
             songPreview.Start();
             selectionStatus = "Previewing music. Press Play / restart for a new attempt.";
@@ -358,7 +358,6 @@
         {
             previousTrack.Stop();
             previousTrack.Dispose();
-            previousTrack.Update();
         }
         ReleaseHydratedFiles();
     }

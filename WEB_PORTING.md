@@ -68,6 +68,7 @@ The audio thread also skips native BASS CPU statistics in WebAssembly. That init
 - Host shutdown deletes textures, buffers, programs and linked shaders, releases CPU arrays, and invalidates callbacks from an old host generation.
 - Selected beatmap/audio copies in the WASM filesystem are deleted once their streams have been consumed; the IndexedDB originals remain available for replay and preview.
 - Score and health processors now update inside the original ruleset's frame-stable component container. The browser shell displays score, accuracy and maximum combo after completion.
+- Custom tracks are registered with the framework audio loop so their queued disposal actually releases media resources. Session removal disposes its drawable tree before replacement.
 - Play/restart creates a fresh attempt. Preview uses a separate track, so preview seeking cannot alter gameplay judgements. Song/mode transitions detach the previous session.
 - The file-store tests are included in the npm test command again and use the current on-demand read API.
 

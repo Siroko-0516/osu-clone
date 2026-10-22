@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using Microsoft.JSInterop;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
@@ -90,7 +91,7 @@ namespace osu.Web
         public void SetRuleset(string mode, int variant = 0) => Schedule(() =>
         {
             GameplaySession = null;
-            inputLayer.Clear();
+            clearInputLayer();
             idleLayer.Show();
             inputLayer.Child = mode switch
             {
@@ -100,6 +101,21 @@ namespace osu.Web
                 _ => createInputContainer<OsuAction>(new OsuRuleset(), 0, "osu")
             };
         });
+
+        public WebAudioTrack CreateBrowserTrack(IJSInProcessObjectReference module, Stream stream, string name)
+        {
+            var track = new WebAudioTrack(module, stream, name);
+            // AudioComponent.Dispose is queued. Register custom tracks so the audio
+            // loop updates their state and actually drains their disposal queue.
+            Audio.AddItem(track);
+            return track;
+        }
+
+        private void clearInputLayer()
+        {
+            foreach (var child in inputLayer.Children.ToArray())
+                inputLayer.Remove(child, disposeImmediately: true);
+        }
 
         public Task LoadBeatmapAsync(IBeatmap beatmap, Ruleset ruleset, Track track)
         {
@@ -115,7 +131,7 @@ namespace osu.Web
                 {
                     GameplayError = string.Empty;
                     GameplaySession = null;
-                    inputLayer.Clear();
+                    clearInputLayer();
 
                     nextSession = new BrowserGameplaySession(
                         beatmap,
@@ -136,7 +152,7 @@ namespace osu.Web
 
                     GameplaySession = null;
                     GameplayError = formatException(exception);
-                    inputLayer.Clear();
+                    clearInputLayer();
                     idleLayer.Show();
                     throw;
                 }
@@ -150,7 +166,7 @@ namespace osu.Web
         public Task StopGameplayAsync() => runOnUpdateThread(() =>
         {
             GameplaySession = null;
-            inputLayer.Clear();
+            clearInputLayer();
             idleLayer.Show();
         });
 
