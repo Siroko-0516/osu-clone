@@ -293,6 +293,7 @@
     private async Task ReturnToLibrary()
     {
         await StopSongPreviewAsync();
+        if (module is not null) await module.InvokeVoidAsync("exitFullscreen");
         selectedBeatmap = null;
         selectedDifficulty = null;
         gameplayResult = null;
@@ -859,6 +860,7 @@
                     game.PauseGameplay();
                     gameplayPaused = true;
                     if (module is not null) await module.InvokeVoidAsync("setGameplayActive", false);
+                    if (module is not null) await module.InvokeVoidAsync("exitFullscreen");
                     selectionStatus = "Play complete.";
                     await SaveCompletedScore(gameplayResult);
                     await InvokeAsync(StateHasChanged);

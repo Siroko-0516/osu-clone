@@ -565,3 +565,12 @@ export async function toggleFullscreen() {
         // Fullscreen is optional; keep the embedded player usable if denied.
     }
 }
+
+export async function exitFullscreen() {
+    try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        resizeCanvas?.();
+    } catch {
+        // A browser may already have ended fullscreen during a focus change.
+    }
+}

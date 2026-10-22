@@ -56,10 +56,12 @@ try {
             assert.equal(await page.locator('.gameplay-hud').innerText(),pausedScore);
             await page.getByRole('button',{name:'Resume play',exact:true}).click();
         }
+        if (mode===1) await page.getByRole('button',{name:'Fullscreen',exact:true}).click();
         await page.screenshot({path:resolve(artifacts,`mode-${mode}.png`)});
         // Deliberately miss notes: completion must still reach results for all modes.
         await page.getByLabel('Play results',{exact:true}).waitFor({timeout:45000});
         await page.getByText('Saved to this browser.',{exact:true}).waitFor();
+        assert.equal(await page.evaluate(()=>document.fullscreenElement !== null),false);
         await page.getByRole('button',{name:'Back to songs',exact:true}).click();
         await page.locator('.library-intro').waitFor();
         console.log(`PASS mode ${mode}: import, original ruleset, completion, score save, return`);
