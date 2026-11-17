@@ -5,13 +5,17 @@ import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { checkPrivateArchive } from './privateGameplay.mjs';
 
 const root = resolve(process.env.OSU_WEB_ROOT ?? '../artifacts/web/wwwroot');
+const privateArchive = process.env.OSU_TEST_ARCHIVE;
 const artifacts = resolve('browser-test-results');
-await mkdir(artifacts, {recursive:true});
 const fixtures = resolve(artifacts, 'maps');
-const generated = spawnSync('python3', ['createSmokeMaps.py', fixtures], {stdio:'inherit'});
-assert.equal(generated.status, 0);
+if (!privateArchive) {
+    await mkdir(artifacts, {recursive:true});
+    const generated = spawnSync('python3', ['createSmokeMaps.py', fixtures], {stdio:'inherit'});
+    assert.equal(generated.status, 0);
+}
 const types = {'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.wasm':'application/wasm','.css':'text/css','.dat':'application/octet-stream'};
 const server = createServer(async (req,res) => {
     try {
@@ -23,13 +27,17 @@ const server = createServer(async (req,res) => {
     } catch { res.writeHead(404).end(); }
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const browser = await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader','--enable-precise-memory-info','--autoplay-policy=no-user-gesture-required']});
+const browser = await chromium.launch({executablePath:process.env.OSU_CHROMIUM_EXECUTABLE_PATH || undefined,headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader','--enable-precise-memory-info','--autoplay-policy=no-user-gesture-required']});
 const page = await browser.newPage({viewport:{width:1280,height:900}});
 page.setDefaultTimeout(60000);
 const errors=[];
 page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{if(message.type()==='error') console.error('BROWSER:',message.text())});
 try {
+    if (privateArchive) {
+        // Opt-in local run only: no archive copy, generated artifacts or screenshots.
+        await checkPrivateArchive(browser, `http://127.0.0.1:${server.address().port}`, resolve(privateArchive));
+    } else {
     await page.goto(`http://127.0.0.1:${server.address().port}`, {waitUntil:'networkidle',timeout:120000});
     await page.getByText('Player ready', {exact:true}).waitFor({timeout:120000});
     await checkRendererPixels(page);
@@ -88,20 +96,20 @@ try {
         console.log(`PASS mode ${mode}: import, original ruleset, completion, score save, return`);
       } catch (error) {
         failures.push(`Mode ${mode}: ${error.message}`);
-        console.log('FAILED STATE:',JSON.stringify(await page.evaluate(async()=>
-            (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics())));
-        console.error(`MODE ${mode} FAILED:`, await page.locator('body').innerText());
-        await page.screenshot({path:resolve(artifacts,`failure-mode-${mode}.png`),fullPage:true});
-        await page.reload({waitUntil:'networkidle'});
-        await page.getByText('Player ready',{exact:true}).waitFor();
-        if(mode===3) {
+        console.error(`MODE ${mode} FAILED:`, error.message);
+        await collectFailure(page, resolve(artifacts,`failure-mode-${mode}.png`));
+        try {
+          await page.reload({waitUntil:'networkidle'});
+          await page.getByText('Player ready',{exact:true}).waitFor();
+          if(mode===3) {
             const passive=page.locator('.song-card').filter({has:page.getByRole('heading',{name:'Browser smoke 3',exact:true})});
             await passive.locator('.difficulty-list button').first().click();
             await page.locator('.gameplay-hud').waitFor();
             await page.waitForTimeout(10000);
             console.log('PASSIVE MANIA STATE:',JSON.stringify(await page.evaluate(async()=>
                 (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics())));
-        }
+          }
+        } catch { throw error; }
       }
     }
     assert.deepEqual(failures,[]);
@@ -129,13 +137,13 @@ try {
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), 'mobile layout must not overflow');
     assert.deepEqual(errors,[]);
     console.log('PASS persisted songs/scores, keyboard navigation and mobile layout');
+    }
 } catch (error) {
-    console.error('PAGE STATE:',await page.locator('body').innerText());
     console.error('PAGE ERRORS:',errors);
-    await page.screenshot({path:resolve(artifacts,'failure.png'),fullPage:true});
+    if (!privateArchive) await collectFailure(page, resolve(artifacts,'failure.png'));
     throw error;
 } finally {
-    await browser.close();
+    await browser.close().catch(error => console.error('Browser cleanup:',error.message));
     await new Promise(resolve=>server.close(resolve));
 }
 
@@ -168,8 +176,31 @@ async function checkLongMaps(browser, baseURL) {
     }
 
     } catch(error) {
-        console.error('LONG MAP FAILURE:',await page.locator('body').innerText());
-        await page.screenshot({path:resolve(artifacts,'long-map-failure.png'),fullPage:true});
+        await collectFailure(page, resolve(artifacts,'long-map-failure.png'));
         throw error;
-    } finally { await page.close(); }
+    } finally { await page.close().catch(() => {}); }
+}
+
+async function bounded(operation, milliseconds=3000) {
+    let timer;
+    try {
+        return await Promise.race([operation, new Promise((_,reject) => {
+            timer=setTimeout(() => reject(new Error('Diagnostic collection timed out')),milliseconds);
+        })]);
+    } finally { clearTimeout(timer); }
+}
+
+async function collectFailure(page, screenshotPath) {
+    // A stalled managed call or GPU must not replace the original test failure
+    // with an unrelated diagnostics/screenshot timeout.
+    const attempts = await Promise.allSettled([
+        bounded(page.evaluate(async() => (await import('/js/browserHost.js?v=16-render-recovery')).playerDiagnostics(false))),
+        page.locator('body').innerText({timeout:3000}),
+        page.screenshot({path:screenshotPath,fullPage:true,timeout:3000}),
+    ]);
+    for (let i=0;i<attempts.length;i++) {
+        const attempt=attempts[i];
+        if (attempt.status === 'fulfilled' && i<2) console.error(['JS STATE:','PAGE STATE:'][i],attempt.value);
+        else if (attempt.status === 'rejected') console.error('Diagnostic unavailable:',attempt.reason.message);
+    }
 }

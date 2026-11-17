@@ -810,6 +810,8 @@
     public object GetPlayerDiagnostics() => new
     {
         gameFrameCount, gameFailed, gameStatus, selectionStatus, consecutiveFrameFailures,
+        framePhase, frameContext, managedBytes = GC.GetTotalMemory(false), allocatedBytes = GC.GetTotalAllocatedBytes(),
+        audioStateReads = songPreview?.StateReadCount,
         hostState = gameHost?.ExecutionState.ToString(),
         inputStatus, receivedInput = gameHost?.BrowserInput.ReceivedEvents,
         heldKeys = gameHost?.BrowserInput.HeldKeys,
@@ -852,6 +854,9 @@
         return InvokeAsync(StateHasChanged);
     }
 
+    private string framePhase = "idle";
+    private string? frameContext;
+
     [JSInvokable]
     public async Task PumpGameFrame(long frame, BrowserInputEvent[] inputs, int width, int height)
     {
@@ -859,6 +864,8 @@
         {
             try
             {
+                frameContext = System.Threading.SynchronizationContext.Current?.GetType().FullName;
+                framePhase = "input";
                 gameHost.Resize(width, height);
                 foreach (var input in inputs)
                     gameHost.BrowserInput.Receive(input);
@@ -867,7 +874,9 @@
                 bool accepted;
                 try
                 {
+                    framePhase = "framework";
                     accepted = gameHost.PumpFrame();
+                    framePhase = "framework complete";
                 }
                 finally
                 {
@@ -892,6 +901,7 @@
                 // the mobile WebAssembly heap on object-heavy maps. WebGL keeps the
                 // previous geometry between transfers. Frame state uses the byte-array fast
                 // interop path, allowing the scene to update at display refresh rate.
+                framePhase = "textures";
                 var uploads = gameHost.GetBrowserTextureUploads();
                 if (module is not null)
                 {
@@ -907,11 +917,14 @@
                                                 : 1;
                     if (frame % visualTransferDivisor == 0)
                     {
+                        framePhase = "frame packet";
                         byte[] state = gameHost.GetBrowserFrameState();
                         lastFrameFloatCount = Math.Max(0, (int)BitConverter.ToSingle(state, 4 * sizeof(float)));
+                        framePhase = "frame transfer";
                         await module.InvokeVoidAsync("applyFrameworkFrame", state);
                     }
                 }
+                framePhase = "gameplay state";
                 gameFrameCount++;
                 if (frame % 15 == 0 && songPreview is { } playingTrack)
                 {
@@ -977,7 +990,11 @@
         // Re-rendering the full Blazor page during gameplay causes periodic
         // main-thread stalls on phones and tablets.
         if (frame % 180 == 0 || gameFailed || consecutiveFrameFailures > 0)
+        {
+            framePhase = "page render";
             await InvokeAsync(StateHasChanged);
+        }
+        framePhase = "idle";
     }
 
     [JSInvokable]

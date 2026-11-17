@@ -12,6 +12,9 @@ public sealed class WebAudioTrack : Track
     private readonly int id;
     private bool completionReported;
     private bool failureReported;
+    private State? state;
+
+    public long StateReadCount { get; private set; }
 
     public WebAudioTrack(IJSInProcessObjectReference module, Stream stream, string name) : base(name)
     {
@@ -37,7 +40,16 @@ public sealed class WebAudioTrack : Track
         return copy.ToArray();
     }
 
-    private State ReadState() => module.Invoke<State>("trackState", id);
+    // The browser host runs its audio update before gameplay on every frame.
+    // Share that snapshot across clock/state getters rather than serialising and
+    // deserialising the same media state several times during one game update.
+    private State ReadState() => state ??= refreshState();
+
+    private State refreshState()
+    {
+        StateReadCount++;
+        return state = module.Invoke<State>("trackState", id);
+    }
     public override bool IsDummyDevice => false;
     public bool RequiresGesture => !IsDisposed && ReadState().Blocked;
     public string LoadError => IsDisposed ? string.Empty : ReadState().Error;
@@ -45,16 +57,31 @@ public sealed class WebAudioTrack : Track
     public override bool IsRunning => !IsDisposed && ReadState().Running;
     public override double CurrentTime => IsDisposed ? 0 : ReadState().Position;
     public override bool HasCompleted => !IsDisposed && ReadState().Ended;
-    public override bool Seek(double seek) { completionReported = false; return module.Invoke<bool>("seekTrack", id, seek); }
+    public override bool Seek(double seek)
+    {
+        completionReported = false;
+        bool accepted = module.Invoke<bool>("seekTrack", id, seek);
+        if (accepted) state = null;
+        return accepted;
+    }
     public override Task<bool> SeekAsync(double seek) => Task.FromResult(Seek(seek));
-    public override void Start() { completionReported = false; module.InvokeVoid("playTrack", id); }
+    public override void Start()
+    {
+        completionReported = false;
+        module.InvokeVoid("playTrack", id);
+        state = null;
+    }
     public override Task StartAsync() { Start(); return Task.CompletedTask; }
-    public override void Stop() => module.InvokeVoid("stopTrack", id);
+    public override void Stop()
+    {
+        module.InvokeVoid("stopTrack", id);
+        state = null;
+    }
     public override Task StopAsync() { Stop(); return Task.CompletedTask; }
 
     protected override void UpdateState()
     {
-        var state = ReadState();
+        var state = refreshState();
         Length = state.Duration;
         module.InvokeVoid("configureTrack", id, AggregateVolume.Value, AggregateBalance.Value, AggregateFrequency.Value, AggregateTempo.Value, false);
         if (state.Error.Length > 0 && !failureReported) { failureReported = true; RaiseFailed(); }
@@ -65,6 +92,7 @@ public sealed class WebAudioTrack : Track
     protected override void Dispose(bool disposing)
     {
         if (!IsDisposed) module.InvokeVoid("disposeTrack", id);
+        state = null;
         base.Dispose(disposing);
     }
 

@@ -6,6 +6,55 @@ const source = await readFile(new URL('../osu.Web/wwwroot/js/browserHost.js', im
 const importable = source.replace("'./browserDraw.mjs'", JSON.stringify(new URL('../osu.Web/wwwroot/js/browserDraw.mjs', import.meta.url).href)).replace("'./browserInput.mjs'", JSON.stringify(new URL('../osu.Web/wwwroot/js/browserInput.mjs', import.meta.url).href));
 const host = await import(`data:text/javascript;base64,${Buffer.from(importable).toString('base64')}`);
 
+test('a busy GPU bounds submissions without stopping game updates', async () => {
+    const calls = [];
+    let render, busy = true;
+    const gl = new Proxy({}, { get: (_, name) => {
+        if (name === name.toUpperCase()) return name;
+        if (name === 'clientWaitSync') return () => busy ? 'TIMEOUT_EXPIRED' : 'CONDITION_SATISFIED';
+        if (name === 'getShaderParameter' || name === 'getProgramParameter') return () => true;
+        if (name === 'getAttribLocation') return () => 0;
+        if (name === 'getParameter') return () => 'test renderer';
+        return (...args) => { calls.push([name, ...args]); return {}; };
+    }});
+    globalThis.window = new EventTarget();
+    globalThis.document = new EventTarget();
+    globalThis.requestAnimationFrame = fn => { render = fn; return 1; };
+    globalThis.cancelAnimationFrame = () => {};
+    const canvas = new EventTarget();
+    canvas.getContext = () => gl;
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 480 });
+    let updates = 0;
+    const bridge = { invokeMethodAsync: async name => { if (name === 'PumpGameFrame') updates++; } };
+    try {
+        await host.startBrowserHost(canvas, bridge);
+        render(0);
+        await new Promise(resolve => setImmediate(resolve));
+        const firstDraws = calls.filter(c => c[0] === 'drawArrays').length;
+        assert.ok(firstDraws > 0);
+        for (let i = 1; i <= 100; i++) {
+            render(i * 16);
+            await new Promise(resolve => setImmediate(resolve));
+        }
+        assert.equal(calls.filter(c => c[0] === 'drawArrays').length, firstDraws);
+        assert.equal(calls.filter(c => c[0] === 'fenceSync').length, 1);
+        assert.equal(updates, 101, 'GPU backpressure must not stall input, clocks, or game updates');
+        assert.equal((await host.playerDiagnostics(false)).gpuSkippedFrames, 100);
+        busy = false;
+        render(1620);
+        assert.equal(calls.filter(c => c[0] === 'drawArrays').length, firstDraws + 1);
+        assert.equal(calls.filter(c => c[0] === 'deleteSync').length, 1);
+        host.stopBrowserHost();
+        assert.equal(calls.filter(c => c[0] === 'deleteSync').length, 2);
+    } finally {
+        host.stopBrowserHost();
+        delete globalThis.window;
+        delete globalThis.document;
+        delete globalThis.requestAnimationFrame;
+        delete globalThis.cancelAnimationFrame;
+    }
+});
+
 test('only standard combines keyboard hold with pointer drag', () => {
     assert.equal(host.isPointerDrag('osu', false, true), true);
     assert.equal(host.isPointerDrag('mania', false, true), false);
