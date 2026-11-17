@@ -16,6 +16,8 @@ let hostGeneration = 0;
 let fallbackTexture;
 let frame = 0;
 let pumpPending = false;
+let gpuFence = null;
+let gpuSkippedFrames = 0;
 let pointer = { x: 0, y: 0, down: false };
 let activePointerId = null;
 const keys = new Set();
@@ -403,6 +405,23 @@ export async function startBrowserHost(target, dotnetReference) {
         // A thrown WebGL error must never permanently kill requestAnimationFrame.
         animationFrame = requestAnimationFrame(render);
         try {
+        // Never queue another scene while the GPU is still consuming the last
+        // one. Poll without blocking so input and managed updates keep running.
+        // Replaying stale geometry on every rAF can otherwise fill the driver
+        // queue while a slow GPU is still rendering the previous frame.
+        let canDraw = true;
+        if (gpuFence) {
+            const status = gl.clientWaitSync(gpuFence, 0, 0);
+            if (status === gl.TIMEOUT_EXPIRED) {
+                canDraw = false;
+                gpuSkippedFrames++;
+            } else {
+                gl.deleteSync(gpuFence);
+                gpuFence = null;
+                if (status === gl.WAIT_FAILED) throw new Error('GPU frame synchronization failed');
+            }
+        }
+        if (canDraw) {
         // The first framework frames may contain only the clear colour and viewport
         // while the scene graph is still loading. Keep the diagnostic surface visible
         // until drawable geometry is actually available instead of showing a black box.
@@ -422,6 +441,10 @@ export async function startBrowserHost(target, dotnetReference) {
             gl.uniform1f(uniforms.down, isPointerDrag(ruleset, pointer.down, inputBridge?.hasHeldKeys() ?? false) ? 1 : 0);
             gl.uniform1f(uniforms.keys, keys.size);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+        gpuFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        if (!gpuFence) throw new Error('Could not synchronize the GPU frame');
+        gl.flush();
         }
 
         drawFailures = 0;
@@ -463,6 +486,7 @@ export function stopBrowserHost() {
         for (const texture of frameworkTextures.values()) gl.deleteTexture(texture);
         if (fallbackTexture) gl.deleteTexture(fallbackTexture);
         if (frameworkBuffer) gl.deleteBuffer(frameworkBuffer);
+        if (gpuFence) gl.deleteSync(gpuFence);
         if (diagnosticBuffer) gl.deleteBuffer(diagnosticBuffer);
         if (frameworkProgram) gl.deleteProgram(frameworkProgram);
         if (program) gl.deleteProgram(program);
@@ -477,6 +501,8 @@ export function stopBrowserHost() {
     dotnet = undefined;
     gl = undefined;
     program = undefined;
+    gpuFence = null;
+    gpuSkippedFrames = 0;
     diagnosticBuffer = undefined;
     frameworkProgram = undefined;
     frameworkBuffer = undefined;
@@ -621,7 +647,7 @@ function reportHostFailure(message) {
 }
 
 // On-demand diagnostics for reproducing loading/clock stalls without a per-frame UI refresh.
-export async function playerDiagnostics() {
-    return {frame,pumpPending,drawFailures,hostFailureReported,gameplayActive,heldKeys:inputBridge?.heldKeys(),memory:rendererMemory(),
-        managed:dotnet ? await dotnet.invokeMethodAsync('GetPlayerDiagnostics') : null};
+export async function playerDiagnostics(includeManaged = true) {
+    return {frame,pumpPending,drawFailures,hostFailureReported,gameplayActive,gpuPending:!!gpuFence,gpuSkippedFrames,heldKeys:inputBridge?.heldKeys(),memory:rendererMemory(),
+        managed:includeManaged && dotnet ? await dotnet.invokeMethodAsync('GetPlayerDiagnostics') : null};
 }

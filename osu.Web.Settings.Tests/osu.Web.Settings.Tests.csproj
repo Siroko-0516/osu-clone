@@ -13,5 +13,7 @@
     <Compile Include="../osu.Web/Storage/BrowserSettingsStore.cs" Link="BrowserSettingsStore.cs" />
     <Compile Include="../osu.Web/Storage/BrowserKeyBindingStore.cs" Link="BrowserKeyBindingStore.cs" />
     <Compile Include="../osu.Web/Storage/BrowserBeatmapLoader.cs" Link="BrowserBeatmapLoader.cs" />
+    <Compile Include="../osu.Web/WebAudioTrack.cs" Link="WebAudioTrack.cs" />
+    <PackageReference Include="Microsoft.JSInterop" Version="8.0.20" />
   </ItemGroup>
 </Project>

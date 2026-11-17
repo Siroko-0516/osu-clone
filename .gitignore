@@ -344,3 +344,6 @@ FodyWeavers.xsd
 
 .idea/.idea.osu.Desktop/.idea/misc.xml
 .idea/.idea.osu.Android/.idea/deploymentTargetDropDown.xml
+
+# Local browser regression fixtures and screenshots
+/osu.Web.Storage.Tests/browser-test-results/

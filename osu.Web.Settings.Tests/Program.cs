@@ -165,6 +165,7 @@ static class Program
             "Replay overwrote an attempt or score fields did not survive restart.");
         Console.WriteLine("PASS completed scores survive restart, retries and independent replay attempts");
         await BeatmapLoadingChecks.Run().ConfigureAwait(false);
+        WebAudioTrackChecks.Run();
     }
 }
 

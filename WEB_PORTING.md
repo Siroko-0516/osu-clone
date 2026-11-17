@@ -103,3 +103,30 @@ Streaming archive extraction allocates each retained entry once and yields betwe
 Blocked autoplay now waits for an explicit audio-start tap rather than repeatedly attempting playback without activation. Audio resume and media play are invoked in the original gesture turn. Decode failures are surfaced to the player.
 
 Local validation: Release WebAssembly build, 14 JavaScript checks and 11 managed checks pass. Checks include repeated rendering failures, blocked audio recovery, and byte-for-byte streaming extraction across chunk boundaries. The browser suite additionally checks actual mask/path pixels, four-mode playthroughs, mania keyboard scoring and repeated 1,500-object map loading. These fixtures do not establish stability on every user map, mobile performance, or measured audio latency.
+
+## GPU backpressure investigation (2026-11-17)
+
+Resumed from game `fff2613` and framework `d06d6d7`. Framework `web-port` at `e020979` has the same source tree as that pinned revision. The previous browser CI built successfully but stalled on the generated 1,500-object **standard** map; its passing long mania fixtures did not establish a fix for the reported archive.
+
+On Linux Chromium 156 with software WebGL, the Release baseline stalled after map selection. Disabling only scene drawing let the same generated map play, pause and return. Disabling interpreter traces did not make that reproduction pass. Applying only the GPU submission change to the old managed build passed three repeated loading/play/pause/return attempts. This supports a rendering-backlog explanation for this reproduction; it does not establish that the user's exact `Program terminated with exit(1)` has the same cause.
+
+The host now fences each submitted scene and polls the fence with a zero timeout. While that scene is still executing, it skips another draw submission but continues input and managed updates. Completed fences and shutdown release the sync object. This bounds outstanding scene submissions, not all texture-upload work or total GPU memory. Diagnostics expose skipped submissions and pending GPU work.
+
+Browser audio tracks also share one media-state snapshot per audio update, rather than repeatedly allocating interop/JSON state objects for clock and state getters. Start, stop and accepted seeks invalidate the snapshot immediately. On-demand managed diagnostics include heap/allocation counts, audio state reads and the current frame phase.
+
+Local checks: Release publish, 15 JavaScript tests, 12 managed checks, actual WebGL mask/path pixels, three long generated mania maps, four ruleset playthroughs with score persistence, keyboard scoring and two 1,500-object attempts pass. The GPU unit check keeps game updates advancing across 100 busy-GPU turns without submitting another scene. Audio checks exercise 100 clock updates with repeated reads, seek/pause/resume, completion, errors and disposal.
+
+Private archives can be tested without copying them into fixtures or capturing private screenshots:
+
+```sh
+cd osu.Web.Storage.Tests
+OSU_TEST_ARCHIVE=/local/private-map.osz \
+OSU_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium \
+OSU_WEB_ROOT=../artifacts/web/wwwroot npm run test:e2e
+```
+
+This opt-in check expects nine difficulties by default (`OSU_TEST_DIFFICULTY_COUNT` overrides it), with two attempts each. It checks ready state, advancing frames/clocks/judgements, pause/resume and session disposal, and emits numeric memory metrics. The original archive remains local and is never a repository fixture. Generated browser artifacts are ignored by Git. Browser/device parity, full-song stability and a lower total-process memory peak require separate measurements; passing short playthroughs alone is not proof of resolution.
+
+The locally provided archive passed all nine difficulties twice (18 ready/play/pause/resume/exit attempts). Sampled peaks across those checks were 43,532,931 JS heap bytes, 35,394,672 managed heap bytes and 382,861,312 WASM linear-memory bytes. WASM memory grew from 319,029,248 bytes after the first import and then plateaued at the larger value through the remaining 7K/4K attempts. These samples are not total-process/GPU peak measurements and do not establish a lower peak against the baseline.
+
+A sustained local run of the original 6,699-note 7K difficulty remained alive and advanced judgements, but was manually stopped after about 191 seconds: the audio/game clock was at 146.1 seconds while the ruleset clock was only at 18.1 seconds (408 judgements). This concurrent, software-WebGL/interpreted-WASM run is **not** a full-song pass; real-time playback performance remains unresolved. A lower total-process memory peak and the exact reported `exit(1)` are also not established. The investigation PR remains a draft.

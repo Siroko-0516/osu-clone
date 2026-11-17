@@ -24,7 +24,8 @@ concurrency:
 
 jobs:
   wasm-host:
-    runs-on: ubuntu-latest
+    # Playwright 1.51 does not support the ubuntu-26.04 image used by latest.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout osu
@@ -80,7 +81,9 @@ jobs:
 
       - name: Install headless browser
         working-directory: osu.Web.Storage.Tests
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y ffmpeg
 
       - name: Play original rulesets in the browser
         working-directory: osu.Web.Storage.Tests
